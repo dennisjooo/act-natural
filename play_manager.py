@@ -153,12 +153,16 @@ class PlayManager:
         ]
         return random.choice(fallback_scenarios)
     
-    def start_play(self, scene_description: str = None, num_characters: int = 3) -> str:
+    def start_play(self, scene_description: str, num_characters: int = 4, 
+                   user_name: str = "Anonymous Player", 
+                   user_description: str = "A curious participant in this interactive story") -> str:
         """Start the interactive play with given scene and characters.
         
         Args:
             scene_description: Description of the scene, prompts for input if None
             num_characters: Number of characters to generate
+            user_name: Name of the user participating in the play (defaults to "Anonymous Player")
+            user_description: Brief description of the user (defaults to generic description)
             
         Returns:
             str: Opening narration for the scene
@@ -166,15 +170,20 @@ class PlayManager:
         if not scene_description:
             scene_description = input("Describe the scene and situation for the play: ")
         
+        # Store user information with defaults
+        self.user_name = user_name.strip() or "Anonymous Player"
+        self.user_description = user_description.strip() or "A curious participant in this interactive story"
+        
         # Generate characters based on the scene
         self.generate_characters(scene_description, num_characters)
         
         # Initialize orchestrator with generated characters
         self.orchestrator = Orchestrator(self.characters, self.narrator)
         
-        # Connect characters to orchestrator
+        # Connect characters to orchestrator and provide user info
         for char in self.characters.values():
             char.set_orchestrator(self.orchestrator)
+            char.set_user_info(self.user_name, self.user_description)
         
         opening = self.narrator.set_scene(scene_description)
         return f"{opening}\n\nThe scene is set. You may begin interacting..."

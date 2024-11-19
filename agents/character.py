@@ -58,7 +58,8 @@ class Character:
         """Initialize the language model for generating responses."""
         return ChatGroq(
             api_key=os.getenv("GROQ_API_KEY"),
-            model_name="llama-3.1-8b-instant"
+            model_name="llama-3.1-8b-instant",
+            temperature=0.25
         )
     
     def _format_personality(self) -> str:
@@ -152,3 +153,13 @@ class Character:
         except Exception as e:
             print(f"Error generating character response: {e}")
             return f"[{self.name}]: *looks uncertain*"
+    
+    def set_user_info(self, user_name: str, user_description: str) -> None:
+        """Set information about the user for better interaction.
+        
+        Args:
+            user_name: Name of the user
+            user_description: Brief description of the user
+        """
+        self.user_name = user_name
+        self.user_description = user_description

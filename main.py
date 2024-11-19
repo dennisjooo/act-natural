@@ -75,6 +75,10 @@ def init_session_state() -> None:
         st.session_state.started = False
     if 'error_log' not in st.session_state:
         st.session_state.error_log = []
+    if 'user_name' not in st.session_state:
+        st.session_state.user_name = "Anonymous Player"
+    if 'user_description' not in st.session_state:
+        st.session_state.user_description = "A curious participant in this interactive story"
 
 def process_responses(responses: List[str]) -> Generator[Tuple[str, str], None, None]:
     """Process responses and yield messages to add
@@ -95,6 +99,50 @@ def main() -> None:
     """Main application entry point"""
     st.title("Interactive Play Generator")
     
+    # Initialize session state
+    init_session_state()
+    
+    # Add character tracker to sidebar when play has started
+    if st.session_state.started and hasattr(st.session_state, 'play_manager'):
+        with st.sidebar:
+            st.subheader("Characters in Scene")
+            
+            # Display user first
+            st.markdown(f"**{get_avatar_emoji(None)} {st.session_state.user_name}** (You)")
+            st.markdown(f"<small>{st.session_state.user_description}</small>", unsafe_allow_html=True)
+            
+            st.markdown("---")
+            
+            # Display scene context if available
+            if hasattr(st.session_state.play_manager, 'scene_description'):
+                with st.expander("Scene Context"):
+                    st.markdown(f"<small>{st.session_state.play_manager.scene_description}</small>", 
+                              unsafe_allow_html=True)
+            
+            # Display all other characters
+            for char_name, char in st.session_state.play_manager.characters.items():
+                emoji = get_avatar_emoji(char_name)
+                st.markdown(f"**{emoji} {char_name}**")
+                with st.expander("Background"):
+                    if hasattr(char.config, 'description'):
+                        st.markdown(f"<small>**Description:** {char.config.description}</small>", 
+                                  unsafe_allow_html=True)
+                    if hasattr(char.config, 'background'):
+                        st.markdown(f"<small>**Background:** {char.config.background}</small>", 
+                                  unsafe_allow_html=True)
+                    if hasattr(char.config, 'personality'):
+                        st.markdown("<small>**Personality Traits:**</small>", unsafe_allow_html=True)
+                        # Handle personality traits as a dictionary
+                        if isinstance(char.config.personality, dict):
+                            for trait, value in char.config.personality.items():
+                                # Convert trait from snake_case or camelCase to Title Case
+                                formatted_trait = ' '.join(
+                                    word.capitalize() 
+                                    for word in trait.replace('_', ' ').split()
+                                )
+                                st.markdown(f"<small>• {formatted_trait}: {value}</small>", 
+                                          unsafe_allow_html=True)
+    
     # Add custom CSS
     st.markdown("""
         <style>
@@ -104,39 +152,92 @@ def main() -> None:
         .stChatMessage .content p {
             margin-bottom: 0.2rem;
         }
+        /* Add styling for character descriptions in sidebar */
+        .sidebar small {
+            color: #666;
+            font-size: 0.85em;
+        }
         </style>
     """, unsafe_allow_html=True)
     
-    # Initialize session state
-    init_session_state()
+    # Move reset button to top of page
+    if st.session_state.started:
+        if st.button("Reset Play"):
+            st.session_state.play_manager.cleanup()
+            st.session_state.clear()
+            st.rerun()
     
     if not st.session_state.started:
         st.write("Welcome to the Interactive Play Generator! Let's create a scene together.")
         
+        # Add user information inputs
+        with st.form("user_info"):
+            st.write("Tell us about yourself:")
+            user_name = st.text_input(
+                "Your Name", 
+                value=st.session_state.user_name,
+                placeholder="Enter your name or leave blank for 'Anonymous Player'"
+            ).strip()
+            user_description = st.text_area(
+                "Brief Description of Yourself", 
+                value=st.session_state.user_description,
+                placeholder="Tell us a bit about yourself, or leave blank for default description",
+                help="This will help the characters interact with you more naturally"
+            ).strip()
+            num_characters = st.slider("Number of Characters", min_value=2, max_value=6, value=4,
+                                     help="How many characters would you like in your scene?")
+            submit_user_info = st.form_submit_button("Save")
+            
+            if submit_user_info:
+                # Use defaults if fields are empty
+                st.session_state.user_name = user_name if user_name else "Anonymous Player"
+                st.session_state.user_description = (
+                    user_description if user_description 
+                    else "A curious participant in this interactive story"
+                )
+                st.session_state.num_characters = num_characters
+                st.success("Information saved!")
+        
         col1, col2 = st.columns(2)
         with col1:
             if st.button("Generate Random Scenario"):
-                try:
-                    scene_description = st.session_state.play_manager.generate_scenario()
-                    st.session_state.messages = []
-                    initial_response = st.session_state.play_manager.start_play(scene_description, num_characters=4)
-                    st.session_state.messages.append(("assistant", initial_response))
-                    st.session_state.started = True
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Error generating scenario: {str(e)}")
-                    st.session_state.error_log.append(str(e))
+                if not st.session_state.user_name or not st.session_state.user_description:
+                    st.error("Please fill in your name and description first!")
+                else:
+                    try:
+                        scene_description = st.session_state.play_manager.generate_scenario()
+                        st.session_state.messages = []
+                        initial_response = st.session_state.play_manager.start_play(
+                            scene_description, 
+                            num_characters=st.session_state.get('num_characters', 4),
+                            user_name=st.session_state.user_name,
+                            user_description=st.session_state.user_description
+                        )
+                        st.session_state.messages.append(("assistant", initial_response))
+                        st.session_state.started = True
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error generating scenario: {str(e)}")
+                        st.session_state.error_log.append(str(e))
         with col2:
             if st.button("Input Custom Scenario"):
-                st.session_state.custom_input = True
-                st.session_state.started = True
+                if not st.session_state.user_name or not st.session_state.user_description:
+                    st.error("Please fill in your name and description first!")
+                else:
+                    st.session_state.custom_input = True
+                    st.session_state.started = True
         
         if getattr(st.session_state, 'custom_input', False):
             scene_description = st.text_area("Describe the scene and situation for your play:")
             if st.button("Start Play"):
                 if scene_description:
                     st.session_state.messages = []
-                    initial_response = st.session_state.play_manager.start_play(scene_description)
+                    initial_response = st.session_state.play_manager.start_play(
+                        scene_description,
+                        num_characters=st.session_state.get('num_characters', 4),
+                        user_name=st.session_state.user_name,
+                        user_description=st.session_state.user_description
+                    )
                     st.session_state.messages.append(("assistant", initial_response))
                     st.session_state.custom_input = False
                     st.rerun()
@@ -168,12 +269,6 @@ def main() -> None:
             # Rerun after all messages are processed
             st.rerun()
         
-        # Add a reset button
-        if st.sidebar.button("Reset Play"):
-            st.session_state.play_manager.cleanup()
-            st.session_state.clear()
-            st.rerun()
-
     # Add debug information in sidebar if there are errors
     if st.session_state.error_log:
         with st.sidebar.expander("Debug Information"):
