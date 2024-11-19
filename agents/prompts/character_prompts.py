@@ -13,14 +13,15 @@ Previous interactions: {memory}
 
 {speaker} says to you: "{message}"
 
-Important:
-- Respond naturally to both users and other characters
-- React to the emotional content and implications of what others say
-- Let your personality traits influence how you interact
-- Occasionally disagree or challenge others based on your background and motives
-- Keep responses concise but meaningful
+Important guidelines:
 - Stay in character at all times
-- Write only spoken dialogue and actions like it's a play, not a novel.
+- React naturally to both emotional content and implications
+- If the message is "What are your thoughts on this?", generate an engaging question for the user that:
+  * Relates to recent events or your interests
+  * Encourages meaningful responses
+  * Shows curiosity about their perspective
+  * Ends with a question mark
+- Write only spoken dialogue and actions like it's a play
 
 Response:
 """
@@ -28,7 +29,7 @@ Response:
 CHARACTER_RESPONSE_PROMPT = PromptTemplate(
     input_variables=[
         "name", "personality", "background", "hidden_motive", "context",
-        "speaker", "message", "memory", "current_thought"
+        "speaker", "message", "memory", "current_thought", "user_name"
     ],
     template=CHARACTER_RESPONSE_TEMPLATE
 )

@@ -71,7 +71,7 @@ class Orchestrator:
         return ChatGroq(
             api_key=os.getenv("GROQ_API_KEY"),
             model_name="gemma2-9b-it",
-            temperature=0.7  # Slightly higher temperature for more varied responses
+            temperature=0.25
         )
     
     def _should_initiate_conversation(self) -> bool:
@@ -338,50 +338,77 @@ class Orchestrator:
             for name, char in self.characters.items()
         )
     
-    def determine_next_interaction(self, last_speaker: str, last_message: str) -> Tuple[str, str, str]:
-        """Determine the next interaction in the conversation flow.
+    def _is_question_to_user(self, message: str, target: str) -> bool:
+        """Check if the message is a question or prompt directed at the user.
         
         Args:
-            last_speaker: Name of the most recent speaker
-            last_message: Content of the most recent message
+            message: The message content to check
+            target: The target of the message
             
         Returns:
-            Tuple of (next_speaker, target, reasoning)
+            bool: True if the message appears to be a question for the user
         """
+        # Check if message is directed at user
+        if target.lower() != "user":
+            return False
+        
+        # Common question indicators
+        question_indicators = [
+            "?", "what", "how", "why", "where", "when", "who", "which",
+            "could you", "would you", "will you", "can you", "do you"
+        ]
+        
+        message_lower = message.lower()
+        return any(indicator in message_lower for indicator in question_indicators)
+    
+    def determine_next_interaction(self, last_speaker: str, last_message: str) -> Tuple[str, str, str]:
+        """Determine the next interaction in the conversation flow."""
         try:
             if last_speaker == "User":
                 self.last_user_interaction = time.time()
             
-            # Check if characters should initiate conversation
+            # Check if the last message was a question to the user
+            last_event = self.conversation_history[-1] if self.conversation_history else None
+            if last_event and self._is_question_to_user(last_event.message, last_event.target):
+                # Strongly prefer user response after being asked a question
+                if random.random() < 0.9:  # 90% chance to wait for user
+                    return "user", last_speaker, "Responding to direct question"
+            
+            # Rest of the existing conversation initiation logic
             if self._should_initiate_conversation():
                 active_chars = self._get_active_characters()
                 if active_chars:
                     initiator = random.choice(active_chars)
-                    target = random.choice([
-                        name for name in self.characters.keys()
-                        if name != initiator
-                    ] + ["User"])
+                    # Increase chance of targeting user when initiating
+                    if random.random() < 0.6:  # 60% chance to target user
+                        target = "User"
+                    else:
+                        target = random.choice([
+                            name for name in self.characters.keys()
+                            if name != initiator
+                        ])
                     return (
                         initiator,
                         target,
                         "Initiating new conversation thread"
                     )
             
-            # Normal flow determination
+            # Normal flow determination with modified logic
             recent_history = self._format_recent_history()
             response = self._get_flow_response(last_speaker, last_message, recent_history)
             result = self._parse_flow_response(response)
             
-            # If the chosen speaker has spoken too recently, try to pick another
-            if result["next_speaker"] in self.characters:
-                recent_speakers = {
-                    event.speaker for event in self.conversation_history[-2:]
-                }
-                if result["next_speaker"] in recent_speakers:
-                    active_chars = self._get_active_characters([result["next_speaker"]])
-                    if active_chars:
-                        result["next_speaker"] = random.choice(active_chars)
+            # If LLM suggests a character speak after a question to user,
+            # override to prefer user response
+            if (last_event and 
+                self._is_question_to_user(last_event.message, last_event.target) and
+                result["next_speaker"] != "user" and 
+                random.random() < 0.8):  # 80% chance to override
+                result["next_speaker"] = "user"
+                result["target"] = last_speaker
+                result["reasoning"] = "Waiting for user's response to question"
             
+            # Rest of the existing logic...
             self._update_conversation_history(last_speaker, result["target"], last_message)
             
             if result["next_speaker"] in self.characters and result["next_speaker"] != "user":

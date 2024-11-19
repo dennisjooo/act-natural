@@ -79,6 +79,8 @@ def init_session_state() -> None:
         st.session_state.user_name = "Anonymous Player"
     if 'user_description' not in st.session_state:
         st.session_state.user_description = "A curious participant in this interactive story"
+    if 'info_saved' not in st.session_state:
+        st.session_state.info_saved = False
 
 def process_responses(responses: List[str]) -> Generator[Tuple[str, str], None, None]:
     """Process responses and yield messages to add
@@ -122,8 +124,7 @@ def main() -> None:
             # Display all other characters
             for char_name, char in st.session_state.play_manager.characters.items():
                 emoji = get_avatar_emoji(char_name)
-                st.markdown(f"**{emoji} {char_name}**")
-                with st.expander("Background"):
+                with st.expander(f"**{emoji} {char_name}**"):
                     if hasattr(char.config, 'description'):
                         st.markdown(f"<small>**Description:** {char.config.description}</small>", 
                                   unsafe_allow_html=True)
@@ -197,19 +198,19 @@ def main() -> None:
                 )
                 st.session_state.num_characters = num_characters
                 st.success("Information saved!")
+                st.session_state.info_saved = True  # Add flag to track if info is saved
         
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("Generate Random Scenario"):
-                if not st.session_state.user_name or not st.session_state.user_description:
-                    st.error("Please fill in your name and description first!")
-                else:
+        # Only show scenario buttons after info is saved
+        if st.session_state.get('info_saved', False):
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("Generate Random Scenario"):
                     try:
                         scene_description = st.session_state.play_manager.generate_scenario()
                         st.session_state.messages = []
                         initial_response = st.session_state.play_manager.start_play(
                             scene_description, 
-                            num_characters=st.session_state.get('num_characters', 4),
+                            num_characters=st.session_state.num_characters,
                             user_name=st.session_state.user_name,
                             user_description=st.session_state.user_description
                         )
@@ -219,28 +220,12 @@ def main() -> None:
                     except Exception as e:
                         st.error(f"Error generating scenario: {str(e)}")
                         st.session_state.error_log.append(str(e))
-        with col2:
-            if st.button("Input Custom Scenario"):
-                if not st.session_state.user_name or not st.session_state.user_description:
-                    st.error("Please fill in your name and description first!")
-                else:
+            with col2:
+                if st.button("Input Custom Scenario"):
                     st.session_state.custom_input = True
                     st.session_state.started = True
-        
-        if getattr(st.session_state, 'custom_input', False):
-            scene_description = st.text_area("Describe the scene and situation for your play:")
-            if st.button("Start Play"):
-                if scene_description:
-                    st.session_state.messages = []
-                    initial_response = st.session_state.play_manager.start_play(
-                        scene_description,
-                        num_characters=st.session_state.get('num_characters', 4),
-                        user_name=st.session_state.user_name,
-                        user_description=st.session_state.user_description
-                    )
-                    st.session_state.messages.append(("assistant", initial_response))
-                    st.session_state.custom_input = False
-                    st.rerun()
+        else:
+            st.info("Please save your information first to continue.")
     
     else:
         # Display message history

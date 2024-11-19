@@ -58,8 +58,7 @@ class Character:
         """Initialize the language model for generating responses."""
         return ChatGroq(
             api_key=os.getenv("GROQ_API_KEY"),
-            model_name="llama-3.1-8b-instant",
-            temperature=0.25
+            model_name="llama-3.1-8b-instant"
         )
     
     def _format_personality(self) -> str:
@@ -114,19 +113,14 @@ class Character:
         return str(response).strip()
     
     def respond_to(self, message: str, speaker: str, context: Dict[str, str]) -> str:
-        """Generate a response to a message.
-        
-        Args:
-            message: The message to respond to
-            speaker: The name of who sent the message
-            context: Dictionary containing contextual information
-            
-        Returns:
-            The character's response formatted with their name
-        """
+        """Generate a response to a message."""
         hidden_thought = self.get_current_thought()
         
         try:
+            # Add debug print
+            if message == "prompt_user":
+                print(f"Character {self.name} generating user prompt...")
+            
             response = self.chain.invoke({
                 "name": self.name,
                 "personality": self._format_personality(),
@@ -134,12 +128,21 @@ class Character:
                 "hidden_motive": self.hidden_motive,
                 "context": context.get("scene", ""),
                 "speaker": speaker,
-                "message": message,
+                "message": "What are your thoughts on this?" if message == "prompt_user" else message,
                 "memory": self.memory.get_recent_memories(),
-                "current_thought": hidden_thought or "Just focusing on the current situation."
+                "current_thought": (
+                    "I should engage the user in conversation" 
+                    if message == "prompt_user" 
+                    else (hidden_thought or "Just focusing on the current situation.")
+                ),
+                "user_name": getattr(self, 'user_name', 'User')
             })
             
             response_text = self._extract_response_text(response)
+            
+            # For user prompts, ensure it ends with a question
+            if message == "prompt_user" and not any(response_text.rstrip().endswith(x) for x in ["?", "..."]):
+                response_text = f"{response_text.rstrip()}"
             
             self.memory.add_memory(MemoryEvent(
                 speaker=speaker,
@@ -152,6 +155,8 @@ class Character:
             
         except Exception as e:
             print(f"Error generating character response: {e}")
+            if message == "prompt_user":
+                return f"[{self.name}]: What are your thoughts on this situation?"
             return f"[{self.name}]: *looks uncertain*"
     
     def set_user_info(self, user_name: str, user_description: str) -> None:

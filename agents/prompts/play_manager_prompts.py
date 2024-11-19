@@ -26,7 +26,8 @@ Return ONLY a JSON object with this EXACT format (no additional text or formatti
         {{
             "name": "string",
             "gender": "male/female/non-binary",
-            "personality": {{"trait1": float_between_0_and_1, "trait2": float_between_0_and_1}},
+            "personality": {{"trait1": float_between_0_and_1, "trait2": float_between_0_and_1, 
+            "trait3": float_between_0_and_1}},
             "background": "string",
             "hidden_motive": "string",
             "emoji": "🧔‍♂️"

@@ -210,9 +210,11 @@ class PlayManager:
         if not self.orchestrator or not self.response_processor:
             raise RuntimeError("Play must be started before processing input")
             
-        formatted_input = f'"{user_input.strip("\"\'")}"'
+         # Ensure input is wrapped in quotes, but avoid double-wrapping
+        cleaned_input = user_input.strip().strip("\"\'")  # Remove any existing quotes
+        formatted_input = f'"{cleaned_input}"'  # Always wrap in double quotes
         
-        # Get next speaker
+        # Get next speaker and target
         next_speaker, target, _ = self.orchestrator.determine_next_interaction(
             "User", formatted_input
         )
@@ -223,29 +225,21 @@ class PlayManager:
         # Primary character response
         char_response = self.characters[next_speaker].respond_to(
             formatted_input,
-            "User",
+            target,  # Use the determined target instead of hardcoding "User"
             {"scene": self.narrator.current_scene}
         )
         
         # Process primary response
-        yield from self.response_processor.process_response(next_speaker, "User", char_response)
+        yield from self.response_processor.process_response(next_speaker, target, char_response)
         
         # Update conversation history
-        self.orchestrator._update_conversation_history(next_speaker, "User", char_response)
+        self.orchestrator._update_conversation_history(next_speaker, target, char_response)
         
         # Handle reactions
         yield from self._process_reactions(next_speaker, char_response)
     
     def _process_reactions(self, primary_speaker: str, primary_response: str) -> Generator[str, None, None]:
-        """Process reactions from other characters.
-        
-        Args:
-            primary_speaker (str): Name of the character who spoke initially
-            primary_response (str): The initial character's response
-            
-        Yields:
-            str: Reaction responses from other characters
-        """
+        """Process reactions from other characters and ensure user engagement."""
         remaining_chars = [name for name in self.characters.keys() if name != primary_speaker]
         num_reactions = min(len(remaining_chars), random.randint(1, 2))
         
@@ -259,9 +253,19 @@ class PlayManager:
             yield from self.response_processor.process_response(char_name, primary_speaker, reaction)
             self.orchestrator._update_conversation_history(char_name, primary_speaker, reaction)
             
-            # Handle follow-up
             if random.random() < 0.2:
                 yield from self._process_followup(primary_speaker, char_name, reaction)
+        
+        # After all reactions, have a character prompt the user
+        prompt_char = random.choice(list(self.characters.keys()))
+        prompt_response = self.characters[prompt_char].respond_to(
+            "prompt_user",  # Special signal
+            "User",
+            {"scene": self.narrator.current_scene}
+        )
+        
+        yield prompt_response  # Make sure we're yielding the prompt
+        self.orchestrator._update_conversation_history(prompt_char, "User", prompt_response)
     
     def _process_followup(self, speaker: str, target: str, previous_response: str) -> Generator[str, None, None]:
         """Process follow-up responses between characters.
