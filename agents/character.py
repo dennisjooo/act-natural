@@ -1,28 +1,11 @@
 import os
-from dataclasses import dataclass
 from langchain_groq import ChatGroq
 from typing import Dict, Optional, Any
 from queue import Empty
 
 from .memory import MemoryManager, MemoryEvent
 from .prompts import CHARACTER_RESPONSE_PROMPT
-
-@dataclass
-class CharacterConfig:
-    """Configuration for a character in the interactive play.
-    
-    Attributes:
-        name: The character's name
-        gender: The character's gender identity
-        personality: Dictionary mapping personality traits to their strength values
-        background: The character's backstory and history
-        hidden_motive: The character's secret motivation
-    """
-    name: str
-    gender: str
-    personality: Dict[str, float]
-    background: str
-    hidden_motive: str
+from .config import CharacterConfig
 
 class Character:
     """A character in the interactive play that can engage in conversation.
@@ -42,7 +25,6 @@ class Character:
         self.thoughts_queue = None
         self.llm = self._initialize_llm()
         self.chain = CHARACTER_RESPONSE_PROMPT | self.llm
-        self.emoji = self._get_trait_emoji()
     
     @property
     def name(self) -> str:
@@ -63,6 +45,14 @@ class Character:
     def hidden_motive(self) -> str:
         """Get the character's hidden motivation."""
         return self.config.hidden_motive
+    
+    @property
+    def emoji(self) -> str:
+        """Get the character's emoji representation."""
+        if self.config.emoji:
+            return self.config.emoji
+        else:
+            return "👤"
     
     def _initialize_llm(self) -> ChatGroq:
         """Initialize the language model for generating responses."""
@@ -121,56 +111,6 @@ class Character:
         if isinstance(response, dict):
             return response.get('text', str(response)).strip()
         return str(response).strip()
-    
-    def _get_trait_emoji(self) -> str:
-        """Get emoji based on dominant personality trait and gender.
-        
-        Returns:
-            An emoji character representing the character
-        """
-        gender = self.config.gender.lower()
-        
-        # Create a mapping of common traits to emojis with gender variants
-        trait_emoji_map = {
-            "intelligence": {"male": "👨‍🎓", "female": "👩‍🎓", "non-binary": "🧑‍🎓"},
-            "wisdom": {"male": "👨‍🏫", "female": "👩‍🏫", "non-binary": "🧑‍🏫"},
-            "scholarly": {"male": "👨‍🎓", "female": "👩‍🎓", "non-binary": "🧑‍🎓"},
-            "authority": {"male": "👨‍💼", "female": "👩‍💼", "non-binary": "🧑‍💼"},
-            "leadership": {"male": "👨‍💼", "female": "👩‍💼", "non-binary": "🧑‍💼"},
-            "commanding": {"male": "👨‍✈️", "female": "👩‍✈️", "non-binary": "🧑‍✈️"},
-            "scientific": {"male": "👨‍🔬", "female": "👩‍🔬", "non-binary": "🧑‍🔬"},
-            "medical": {"male": "👨‍⚕️", "female": "👩‍⚕️", "non-binary": "🧑‍⚕️"},
-            "analytical": {"male": "🧔", "female": "👩", "non-binary": "🧑"},
-            "military": {"male": "👨‍✈️", "female": "👩‍✈️", "non-binary": "🧑‍✈️"},
-            "security": {"male": "👮‍♂️", "female": "👮‍♀️", "non-binary": "👮"},
-            "tactical": {"male": "🧔", "female": "👩", "non-binary": "🧑"},
-            "empathy": {"male": "👨‍⚕️", "female": "👩‍⚕️", "non-binary": "🧑‍⚕️"},
-            "social": {"male": "🧔", "female": "👩", "non-binary": "🧑"},
-            "friendly": {"male": "😊", "female": "😊", "non-binary": "😊"},
-            "mysterious": {"male": "🕵️‍♂️", "female": "🕵️‍♀️", "non-binary": "🕵️"},
-            "secretive": {"male": "🕵️‍♂️", "female": "🕵️‍♀️", "non-binary": "🕵️"},
-            "deceptive": {"male": "🕵️‍♂️", "female": "🕵️‍♀️", "non-binary": "🕵️"},
-            "adventurous": {"male": "🧗‍♂️", "female": "🧗‍♀️", "non-binary": "🧗"},
-            "brave": {"male": "💂‍♂️", "female": "💂‍♀️", "non-binary": "💂"},
-            "explorer": {"male": "👨‍🦱", "female": "👩‍🦱", "non-binary": "🧑"},
-            "technical": {"male": "👨‍💻", "female": "👩‍💻", "non-binary": "🧑‍💻"},
-            "engineering": {"male": "👨‍🔧", "female": "👩‍🔧", "non-binary": "🧑‍🔧"},
-            "mechanical": {"male": "👨‍🔧", "female": "👩‍🔧", "non-binary": "🧑‍🔧"}
-        }
-        
-        if self.personality:
-            dominant_trait = max(self.personality.items(), key=lambda x: x[1])[0].lower()
-            for trait_key, emoji_dict in trait_emoji_map.items():
-                if trait_key in dominant_trait:
-                    return emoji_dict.get(gender, emoji_dict["non-binary"])
-        
-        # Generic avatars based on gender
-        generic_avatars = {
-            "male": ["👨", "👨‍🦰", "👨‍🦱", "👨‍🦳", "🧔"],
-            "female": ["👩", "👩‍🦰", "👩‍🦱", "👩‍🦳", "👱‍♀️"],
-            "non-binary": ["🧑", "🧑‍🦰", "🧑‍🦱", "🧑‍🦳", "🧑‍🦲"]
-        }
-        return generic_avatars.get(gender, generic_avatars["non-binary"])[hash(self.name) % 5]
     
     def respond_to(self, message: str, speaker: str, context: Dict[str, str]) -> str:
         """Generate a response to a message.

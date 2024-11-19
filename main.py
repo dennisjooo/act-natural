@@ -3,7 +3,7 @@ import time
 import streamlit as st
 from dotenv import load_dotenv
 from play_manager import PlayManager
-from typing import Dict, List, Tuple, Generator, Optional
+from typing import List, Tuple, Generator, Optional
 
 load_dotenv()
 
@@ -22,7 +22,7 @@ def extract_character_name(message: str) -> Optional[str]:
     return None
 
 def get_avatar_emoji(character_name: Optional[str]) -> str:
-    """Return an emoji avatar based on character name, role, and gender
+    """Return an emoji avatar based on character name or stored emoji
     
     Args:
         character_name: Name of the character to get avatar for
@@ -35,53 +35,11 @@ def get_avatar_emoji(character_name: Optional[str]) -> str:
     elif not character_name:
         return "🧑"  # Default for user
     
-    # Dynamic character avatar mapping based on their traits
+    # Use character's assigned emoji if available
     if hasattr(st.session_state, 'play_manager') and character_name in st.session_state.play_manager.characters:
         char = st.session_state.play_manager.characters[character_name]
-        personality = char.personality
-        gender = char.config.gender.lower()
-        
-        # Create a mapping of common traits to emojis with gender variants
-        trait_emoji_map: Dict[str, Dict[str, str]] = {
-            "intelligence": {"male": "🧔‍♂️", "female": "👩", "non-binary": "🧑"},
-            "wisdom": {"male": "👨‍🏫", "female": "👩‍🏫", "non-binary": "🧑‍🏫"},
-            "scholarly": {"male": "👨‍🎓", "female": "👩‍🎓", "non-binary": "🧑‍🎓"},
-            "authority": {"male": "👨‍💼", "female": "👩‍💼", "non-binary": "🧑‍💼"},
-            "leadership": {"male": "👨‍💼", "female": "👩‍💼", "non-binary": "🧑‍💼"},
-            "commanding": {"male": "👨‍✈️", "female": "👩‍✈️", "non-binary": "🧑‍✈️"},
-            "scientific": {"male": "👨‍🔬", "female": "👩‍🔬", "non-binary": "🧑‍🔬"},
-            "medical": {"male": "👨‍⚕️", "female": "👩‍⚕️", "non-binary": "🧑‍⚕️"},
-            "analytical": {"male": "🧔", "female": "👩", "non-binary": "🧑"},
-            "military": {"male": "👨‍✈️", "female": "👩‍✈️", "non-binary": "🧑‍✈️"},
-            "security": {"male": "👮‍♂️", "female": "👮‍♀️", "non-binary": "👮"},
-            "tactical": {"male": "🧔", "female": "👩", "non-binary": "🧑"},
-            "empathy": {"male": "👨‍⚕️", "female": "👩‍⚕️", "non-binary": "🧑‍⚕️"},
-            "social": {"male": "🧔", "female": "👩", "non-binary": "🧑"},
-            "friendly": {"male": "😊", "female": "😊", "non-binary": "😊"},
-            "mysterious": {"male": "🕵️‍♂️", "female": "🕵️‍♀️", "non-binary": "🕵️"},
-            "secretive": {"male": "🕵️‍♂️", "female": "🕵️‍♀️", "non-binary": "🕵️"},
-            "deceptive": {"male": "🕵️‍♂️", "female": "🕵️‍♀️", "non-binary": "🕵️"},
-            "adventurous": {"male": "🧗‍♂️", "female": "🧗‍♀️", "non-binary": "🧗"},
-            "brave": {"male": "💂‍♂️", "female": "💂‍♀️", "non-binary": "💂"},
-            "explorer": {"male": "👨‍🦱", "female": "👩‍🦱", "non-binary": "🧑"},
-            "technical": {"male": "👨‍💻", "female": "👩‍💻", "non-binary": "🧑‍💻"},
-            "engineering": {"male": "👨‍🔧", "female": "👩‍🔧", "non-binary": "🧑‍🔧"},
-            "mechanical": {"male": "👨‍🔧", "female": "👩‍🔧", "non-binary": "🧑‍🔧"}
-        }
-        
-        if personality:
-            dominant_trait = max(personality.items(), key=lambda x: x[1])[0].lower()
-            for trait_key, emoji_dict in trait_emoji_map.items():
-                if trait_key in dominant_trait:
-                    return emoji_dict.get(gender, emoji_dict["non-binary"])
-        
-        # Generic avatars based on gender
-        generic_avatars: Dict[str, List[str]] = {
-            "male": ["👨", "👨‍🦰", "👨‍🦱", "👨‍🦳", "🧔"],
-            "female": ["👩", "👩‍🦰", "👩‍🦱", "👩‍🦳", "👱‍♀️"],
-            "non-binary": ["🧑", "🧑‍🦰", "🧑‍🦱", "🧑‍🦳", "🧑‍🦲"]
-        }
-        return generic_avatars.get(gender, generic_avatars["non-binary"])[hash(character_name) % 5]
+        if hasattr(char.config, 'emoji') and char.config.emoji:
+            return char.config.emoji
     
     return "👤"
 

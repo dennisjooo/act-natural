@@ -2,13 +2,15 @@ from langchain.prompts import PromptTemplate
 
 SCENARIO_GENERATION_TEMPLATE = """
 Generate an interesting and dramatic scenario for an interactive play. It needs to be captivating and fun for the user.
+Be free and creative, but make sure it's realistic and coherent.
 
 Return ONLY a JSON object in this exact format:
 {{
     "setting": "description of the location",
     "situation": "description of what's happening",
     "atmosphere": "description of mood and environment"
-}}"""
+}}
+"""
 
 SCENARIO_GENERATION_PROMPT = PromptTemplate(
     input_variables=[],
@@ -26,7 +28,8 @@ Return ONLY a JSON object with this EXACT format (no additional text or formatti
             "gender": "male/female/non-binary",
             "personality": {{"trait1": float_between_0_and_1, "trait2": float_between_0_and_1}},
             "background": "string",
-            "hidden_motive": "string"
+            "hidden_motive": "string",
+            "emoji": "🧔‍♂️"
         }}
     ]
 }}

@@ -3,13 +3,14 @@ import random
 from langchain_groq import ChatGroq
 from typing import Dict, Optional, Generator
 
-from agents.character import Character, CharacterConfig
+from agents.character import Character
 from agents.narrator import Narrator
 from agents.orchestrator import Orchestrator
 from agents.prompts import (
     SCENARIO_GENERATION_PROMPT,
     CHARACTER_GENERATION_PROMPT
 )
+from agents.config import CharacterConfig
 from utils import clean_json_response
 
 class PlayManager:
@@ -73,10 +74,11 @@ class PlayManager:
                     gender=char.get("gender", "non-binary"),
                     personality=char["personality"],
                     background=char["background"],
-                    hidden_motive=char["hidden_motive"]
+                    hidden_motive=char["hidden_motive"],
+                    emoji=char.get("emoji", "👤")
                 )
                 self.characters[char["name"]] = Character(config)
-                print(f"Generated character: {char['name']}")
+                print(f"Generated character: {char['name']}, {char.get('emoji', '👤')}")
                 
         except Exception as e:
             print(f"Error during character generation: {e}")
