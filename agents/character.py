@@ -3,9 +3,9 @@ from langchain_groq import ChatGroq
 from typing import Dict, Optional, Any
 from queue import Empty
 
-from .memory import MemoryManager, MemoryEvent
-from .prompts import CHARACTER_RESPONSE_PROMPT
-from .config import CharacterConfig
+from agents.memory import MemoryManager, MemoryEvent
+from agents.prompts import CHARACTER_RESPONSE_PROMPT
+from config.character_config import CharacterConfig
 
 class Character:
     """A character in the interactive play that can engage in conversation.

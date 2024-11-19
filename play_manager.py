@@ -10,8 +10,10 @@ from agents.prompts import (
     SCENARIO_GENERATION_PROMPT,
     CHARACTER_GENERATION_PROMPT
 )
-from agents.config import CharacterConfig
+from config.character_config import CharacterConfig
 from utils import clean_json_response
+from config.play_config import PlayConfig
+from agents.response_processor import ResponseProcessor
 
 class PlayManager:
     """Manages the interactive play experience including characters, narration and orchestration.
@@ -19,20 +21,29 @@ class PlayManager:
     Handles character generation, scenario creation, and processing user interactions with the play.
     
     Attributes:
-        narrator: The Narrator instance that provides scene descriptions and observations
-        characters: Dictionary mapping character names to Character instances
-        user_name: Name used to identify the user in interactions
-        orchestrator: Optional Orchestrator instance that manages character interactions
-        llm: The language model used for generating content
+        config (PlayConfig): Configuration settings for the play
+        narrator (Narrator): The Narrator instance that provides scene descriptions and observations
+        characters (Dict[str, Character]): Dictionary mapping character names to Character instances
+        user_name (str): Name used to identify the user in interactions
+        user_description (str): Description of the user for character interactions
+        orchestrator (Optional[Orchestrator]): Orchestrator instance that manages character interactions
+        llm (ChatGroq): The language model used for generating content
+        response_processor (Optional[ResponseProcessor]): Processor for formatting character responses
     """
 
-    def __init__(self) -> None:
-        """Initialize the PlayManager with default values."""
+    def __init__(self, config: Optional[PlayConfig] = None) -> None:
+        """Initialize the PlayManager with optional configuration.
+        
+        Args:
+            config (Optional[PlayConfig]): Configuration settings for the play. Defaults to None.
+        """
+        self.config = config or PlayConfig()
         self.narrator = Narrator()
         self.characters: Dict[str, Character] = {}
-        self.user_name = "User"
+        self.user_name = self.config.default_user_name
         self.orchestrator: Optional[Orchestrator] = None
         self.llm = self._initialize_llm()
+        self.response_processor: Optional[ResponseProcessor] = None
         
     def _initialize_llm(self) -> ChatGroq:
         """Initialize the language model with configuration.
@@ -50,8 +61,8 @@ class PlayManager:
         """Generate characters based on the scene description.
         
         Args:
-            scene_description: Description of the scene to base characters on
-            num_characters: Number of characters to generate
+            scene_description (str): Description of the scene to base characters on
+            num_characters (int): Number of characters to generate. Defaults to 3.
         """
         try:
             chain = CHARACTER_GENERATION_PROMPT | self.llm
@@ -153,34 +164,30 @@ class PlayManager:
         ]
         return random.choice(fallback_scenarios)
     
-    def start_play(self, scene_description: str, num_characters: int = 4, 
-                   user_name: str = "Anonymous Player", 
-                   user_description: str = "A curious participant in this interactive story") -> str:
+    def start_play(self, scene_description: str, num_characters: Optional[int] = None, 
+                   user_name: Optional[str] = None, user_description: Optional[str] = None) -> str:
         """Start the interactive play with given scene and characters.
         
         Args:
-            scene_description: Description of the scene, prompts for input if None
-            num_characters: Number of characters to generate
-            user_name: Name of the user participating in the play (defaults to "Anonymous Player")
-            user_description: Brief description of the user (defaults to generic description)
+            scene_description (str): Description of the scene and situation
+            num_characters (Optional[int]): Number of characters to generate. Defaults to config value.
+            user_name (Optional[str]): Name of the user. Defaults to config value.
+            user_description (Optional[str]): Description of the user. Defaults to config value.
             
         Returns:
-            str: Opening narration for the scene
+            str: Opening narration and ready message
         """
+        num_characters = num_characters or self.config.default_num_characters
+        self.user_name = user_name or self.config.default_user_name
+        self.user_description = user_description or self.config.default_user_description
+        
         if not scene_description:
             scene_description = input("Describe the scene and situation for the play: ")
         
-        # Store user information with defaults
-        self.user_name = user_name.strip() or "Anonymous Player"
-        self.user_description = user_description.strip() or "A curious participant in this interactive story"
-        
-        # Generate characters based on the scene
         self.generate_characters(scene_description, num_characters)
-        
-        # Initialize orchestrator with generated characters
         self.orchestrator = Orchestrator(self.characters, self.narrator)
+        self.response_processor = ResponseProcessor(self.characters, self.narrator)
         
-        # Connect characters to orchestrator and provide user info
         for char in self.characters.values():
             char.set_orchestrator(self.orchestrator)
             char.set_user_info(self.user_name, self.user_description)
@@ -192,103 +199,89 @@ class PlayManager:
         """Process user input and generate character responses.
         
         Args:
-            user_input: The user's input message
+            user_input (str): The user's input message
             
         Yields:
-            str: Generated responses including character dialogue and narration
+            str: Character responses and narration
+            
+        Raises:
+            RuntimeError: If play hasn't been started
         """
-        user_input = user_input.strip('"')
-        formatted_input = f'"{user_input}"'
+        if not self.orchestrator or not self.response_processor:
+            raise RuntimeError("Play must be started before processing input")
+            
+        formatted_input = f'"{user_input.strip("\"\'")}"'
         
-        # Initial response to user
-        next_speaker, target, reasoning = self.orchestrator.determine_next_interaction(
+        # Get next speaker
+        next_speaker, target, _ = self.orchestrator.determine_next_interaction(
             "User", formatted_input
         )
         
-        if next_speaker in self.characters:
-            # Primary character responds to user
-            char_response = self.characters[next_speaker].respond_to(
-                formatted_input,
-                "User",
+        if next_speaker not in self.characters:
+            return
+            
+        # Primary character response
+        char_response = self.characters[next_speaker].respond_to(
+            formatted_input,
+            "User",
+            {"scene": self.narrator.current_scene}
+        )
+        
+        # Process primary response
+        yield from self.response_processor.process_response(next_speaker, "User", char_response)
+        
+        # Update conversation history
+        self.orchestrator._update_conversation_history(next_speaker, "User", char_response)
+        
+        # Handle reactions
+        yield from self._process_reactions(next_speaker, char_response)
+    
+    def _process_reactions(self, primary_speaker: str, primary_response: str) -> Generator[str, None, None]:
+        """Process reactions from other characters.
+        
+        Args:
+            primary_speaker (str): Name of the character who spoke initially
+            primary_response (str): The initial character's response
+            
+        Yields:
+            str: Reaction responses from other characters
+        """
+        remaining_chars = [name for name in self.characters.keys() if name != primary_speaker]
+        num_reactions = min(len(remaining_chars), random.randint(1, 2))
+        
+        for char_name in random.sample(remaining_chars, num_reactions):
+            reaction = self.characters[char_name].respond_to(
+                primary_response,
+                primary_speaker,
                 {"scene": self.narrator.current_scene}
             )
             
-            # Ensure complete response
-            char_response = char_response.replace('\n', ' ').strip()
-            if not char_response.endswith(('.', '!', '?', '"')):
-                char_response += '.'  # Add period if response seems incomplete
+            yield from self.response_processor.process_response(char_name, primary_speaker, reaction)
+            self.orchestrator._update_conversation_history(char_name, primary_speaker, reaction)
             
-            # Update conversation history
-            self.orchestrator._update_conversation_history(next_speaker, "User", char_response)
+            # Handle follow-up
+            if random.random() < 0.2:
+                yield from self._process_followup(primary_speaker, char_name, reaction)
+    
+    def _process_followup(self, speaker: str, target: str, previous_response: str) -> Generator[str, None, None]:
+        """Process follow-up responses between characters.
+        
+        Args:
+            speaker (str): Name of the character speaking
+            target (str): Name of the character being spoken to
+            previous_response (str): The previous response being followed up on
             
-            # Possible narration
-            if random.random() < 0.15:
-                narration = self.narrator.observe_interaction(next_speaker, "User", char_response)
-                if narration:
-                    narration = narration.replace('\n', ' ').strip()
-                    if not narration.endswith(('.', '!', '?')):
-                        narration += '.'
-                    yield narration
-                    yield "PAUSE:0.5"
-            
-            yield char_response
-            yield "PAUSE:1"
-            
-            # Process reactions
-            remaining_chars = [name for name in self.characters.keys() if name != next_speaker]
-            num_reactions = min(len(remaining_chars), random.randint(1, 2))
-            reacting_chars = random.sample(remaining_chars, num_reactions)
-            
-            for char_name in reacting_chars:
-                reaction = self.characters[char_name].respond_to(
-                    char_response,
-                    next_speaker,
-                    {"scene": self.narrator.current_scene}
-                )
-                
-                # Ensure complete reaction
-                reaction = reaction.replace('\n', ' ').strip()
-                if not reaction.endswith(('.', '!', '?', '"')):
-                    reaction += '.'
-                
-                self.orchestrator._update_conversation_history(
-                    char_name, next_speaker, reaction
-                )
-                
-                # Add narration for dramatic reactions
-                if random.random() < 0.2:
-                    narration = self.narrator.observe_interaction(
-                        char_name, next_speaker, reaction
-                    )
-                    if narration:
-                        narration = narration.replace('\n', ' ').strip()
-                        if not narration.endswith(('.', '!', '?')):
-                            narration += '.'
-                        yield "PAUSE:0.5"
-                        yield narration
-                
-                yield "PAUSE:1"
-                yield reaction
-                
-                # Handle follow-up response
-                if random.random() < 0.2:
-                    follow_up = self.characters[next_speaker].respond_to(
-                        reaction,
-                        char_name,
-                        {"scene": self.narrator.current_scene}
-                    )
-                    
-                    # Ensure complete follow-up
-                    follow_up = follow_up.replace('\n', ' ').strip()
-                    if not follow_up.endswith(('.', '!', '?', '"')):
-                        follow_up += '.'
-                    
-                    self.orchestrator._update_conversation_history(
-                        next_speaker, char_name, follow_up
-                    )
-                    
-                    yield "PAUSE:1"
-                    yield follow_up
+        Yields:
+            str: Follow-up responses
+        """
+        follow_up = self.characters[speaker].respond_to(
+            previous_response,
+            target,
+            {"scene": self.narrator.current_scene}
+        )
+        
+        yield from self.response_processor.process_response(speaker, target, follow_up)
+        self.orchestrator._update_conversation_history(speaker, target, follow_up)
     
     def cleanup(self) -> None:
         """Clean up resources when shutting down."""
