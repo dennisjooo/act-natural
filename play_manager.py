@@ -41,6 +41,7 @@ class PlayManager:
         self.narrator = Narrator()
         self.characters: Dict[str, Character] = {}
         self.user_name = self.config.default_user_name
+        self.user_description = self.config.default_user_description
         self.orchestrator: Optional[Orchestrator] = None
         self.llm = self._initialize_llm()
         self.response_processor: Optional[ResponseProcessor] = None
@@ -65,10 +66,17 @@ class PlayManager:
             num_characters (int): Number of characters to generate. Defaults to 3.
         """
         try:
+            # Include character context in the scene description if available
+            full_description = scene_description
+            if hasattr(self, 'character_context') and self.character_context:
+                full_description = f"{scene_description}\n\nExpected characters: {self.character_context}"
+            
             chain = CHARACTER_GENERATION_PROMPT | self.llm
             response = chain.invoke({
-                "scene_description": scene_description,
-                "num_characters": num_characters
+                "scene_description": full_description,
+                "num_characters": num_characters,
+                "user_name": self.user_name,
+                "user_description": self.user_description
             }).content.strip()
             
             # Use the new clean_json_response function
@@ -83,10 +91,12 @@ class PlayManager:
                 config = CharacterConfig(
                     name=char["name"],
                     gender=char.get("gender", "non-binary"),
+                    description=char.get("description", ""),
                     personality=char["personality"],
                     background=char["background"],
                     hidden_motive=char["hidden_motive"],
-                    emoji=char.get("emoji", "👤")
+                    emoji=char.get("emoji", "👤"),
+                    role_in_scene=char.get("role_in_scene", "")
                 )
                 self.characters[char["name"]] = Character(config)
                 print(f"Generated character: {char['name']}, {char.get('emoji', '👤')}")
@@ -101,23 +111,29 @@ class PlayManager:
             "Adventurer": CharacterConfig(
                 name="Adventurer",
                 gender="male",
+                description="A rugged individual with weathered features and well-worn traveling clothes",
                 personality={"bravery": 0.8, "curiosity": 0.9},
                 background="A seasoned explorer seeking ancient treasures",
-                hidden_motive="Searching for a legendary artifact that could save their homeland"
+                hidden_motive="Searching for a legendary artifact that could save their homeland",
+                emoji="🗺️"
             ),
             "Scholar": CharacterConfig(
                 name="Scholar",
                 gender="female",
+                description="A sharp-eyed woman in scholarly robes with wire-rimmed spectacles",
                 personality={"intelligence": 0.9, "caution": 0.7},
                 background="A knowledgeable researcher of ancient ruins",
-                hidden_motive="Secretly working for a mysterious organization"
+                hidden_motive="Secretly working for a mysterious organization",
+                emoji="📚"
             ),
             "Guide": CharacterConfig(
                 name="Guide",
                 gender="non-binary",
+                description="A mysterious figure in local garb with keen eyes and quiet demeanor",
                 personality={"wisdom": 0.8, "mystery": 0.6},
                 background="A local expert with deep knowledge of the area",
-                hidden_motive="Protecting an ancient secret about the location"
+                hidden_motive="Protecting an ancient secret about the location",
+                emoji="🧭"
             )
         }
         
@@ -134,18 +150,25 @@ class PlayManager:
         """
         try:
             chain = SCENARIO_GENERATION_PROMPT | self.llm
-            response = chain.invoke({}).content
+            response = chain.invoke({
+                "user_name": self.user_name,
+                "user_description": self.user_description
+            }).content
             
-            # Use the new clean_json_response function
             scenario_data = clean_json_response(response)
             if not scenario_data:
                 print("Failed to parse scenario data, using fallback scenario")
                 return self.get_fallback_scenario()
             
+            # Store character context and user role for later use
+            self.character_context = scenario_data.get('character_context', '')
+            self.user_role = scenario_data.get('user_role', '')
+            
             return (
                 f"{scenario_data['setting']}. "
                 f"{scenario_data['situation']} "
-                f"{scenario_data['atmosphere']}"
+                f"{scenario_data['atmosphere']}\n\n"
+                f"Your role: {self.user_role}"
             )
         except Exception as e:
             print(f"Error generating scenario: {e}")
