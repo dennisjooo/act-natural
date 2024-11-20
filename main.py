@@ -35,6 +35,8 @@ def process_responses(responses: List[str]) -> Generator[Tuple[str, str], None, 
 
 def main() -> None:
     """Main application entry point"""
+    setup_page_config()
+    
     st.title("Interactive Play Generator")
     
     init_session_state()
