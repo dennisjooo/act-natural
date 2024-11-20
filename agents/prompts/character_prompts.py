@@ -21,6 +21,7 @@ Important guidelines:
   * Physical appearance and setting details at the start
   * Character movements and gestures throughout dialogue
   * Emotional reactions and environmental changes
+  * End actions and descriptions with a line break
 - If the message is "SCENE_START", provide an initial reaction to the scene that:
   * Describes your character's appearance and initial position
   * Shows your immediate reaction to the environment

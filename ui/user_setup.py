@@ -20,7 +20,12 @@ def display_user_setup() -> bool:
         - num_characters: Selected number of characters
         - info_saved: True to indicate setup is complete
     """
-    st.write("Welcome to the Interactive Play Generator! Let's create a scene together.")
+    st.markdown("""
+        <div>
+            <h3>Welcome to Act Natural!</h3>
+            <p>Let's create an interactive scene together. Start by telling us about yourself.</p>
+        </div>
+    """, unsafe_allow_html=True)
     
     with st.form("user_info"):
         st.write("Tell us about yourself:")
@@ -37,17 +42,20 @@ def display_user_setup() -> bool:
         ).strip()
         num_characters = st.slider("Number of Characters", min_value=2, max_value=6, value=4,
                                    help="How many characters would you like in your scene?")
-        submit_user_info = st.form_submit_button("Save")
+        submit_user_info = st.form_submit_button("Save", use_container_width=True)
         
         if submit_user_info:
-            st.session_state.user_name = user_name if user_name else "Anonymous Player"
-            st.session_state.user_description = (
-                user_description if user_description 
-                else "A curious participant in this interactive story"
-            )
-            st.session_state.num_characters = num_characters
-            st.success("Information saved!")
-            st.session_state.info_saved = True
+            # Update session state with form values, using defaults where empty
+            session_updates = {
+                'user_name': user_name or "Anonymous Player",
+                'user_description': user_description or "A curious participant in this interactive story",
+                'num_characters': num_characters,
+                'info_saved': True,
+                'started': False,
+                'show_custom_form': False
+            }
+            st.session_state.update(session_updates)
+            st.toast("Information saved! 👍")
             return True
     
     return False

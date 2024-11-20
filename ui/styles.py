@@ -4,12 +4,11 @@ def apply_custom_styles() -> None:
     """Apply custom CSS styles to the application.
     
     Applies custom styling to:
-    - Chat messages: Adjusts vertical spacing between messages and paragraphs
-    - Sidebar character descriptions: Sets font size and color for readability
+    - Chat messages: Adds bottom margin and adjusts paragraph spacing
+    - Sidebar character descriptions: Sets smaller, muted text style
     
     Side Effects:
-        Injects custom CSS into the Streamlit application using st.markdown()
-        with unsafe_allow_html=True
+        Injects custom CSS into the Streamlit app using st.markdown()
     """
     st.markdown("""
         <style>
@@ -25,4 +24,4 @@ def apply_custom_styles() -> None:
             font-size: 0.85em;
         }
         </style>
-    """, unsafe_allow_html=True) 
+    """, unsafe_allow_html=True)

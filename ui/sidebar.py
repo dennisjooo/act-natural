@@ -20,6 +20,18 @@ def display_sidebar() -> None:
         including markdown text, expanders, and subheaders.
     """
     with st.sidebar:
+        # Add Reset Play button at the top of sidebar
+        if st.button("Reset Play"):
+            st.session_state.play_manager.cleanup()
+            st.session_state.update({
+                'started': False,
+                'info_saved': False,
+                'messages': [],
+                'scene_description': None,
+                'show_custom_form': False
+            })
+            st.rerun()
+            
         st.subheader("Characters in Scene")
         
         # Display user first

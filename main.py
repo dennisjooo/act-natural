@@ -5,6 +5,7 @@ from play_manager import PlayManager
 from typing import List, Tuple, Generator
 
 from ui import *
+from ui.scenario_setup import display_scenario_buttons
 
 load_dotenv()
 
@@ -45,17 +46,9 @@ def main() -> None:
     if st.session_state.started and hasattr(st.session_state, 'play_manager'):
         display_sidebar()
     
-    if st.session_state.started:
-        if st.button("Reset Play"):
-            st.session_state.play_manager.cleanup()
-            st.session_state.clear()
-            st.rerun()
-    
     if not st.session_state.started:
         if display_user_setup() and st.session_state.get('info_saved', False):
             display_scenario_buttons()
-        else:
-            st.info("Please save your information first to continue.")
     
     else:
         # Display message history
@@ -77,6 +70,10 @@ def main() -> None:
                 time.sleep(0.1)
             
             st.rerun()
+    
+    # Display custom form at the end if needed
+    if st.session_state.get('show_custom_form', False):
+        display_custom_form()
     
     # Add debug information in sidebar if there are errors
     if st.session_state.error_log:

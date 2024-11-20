@@ -211,17 +211,20 @@ class PlayManager:
             Initializes characters, orchestrator, and response processor
             Sets user name and description
         """
-        num_characters = num_characters or self.config.default_num_characters
+        # Set user info before any character generation or scenario creation
         self.user_name = user_name or self.config.default_user_name
         self.user_description = user_description or self.config.default_user_description
+        num_characters = num_characters or self.config.default_num_characters
         
         if not scene_description:
             scene_description = input("Describe the scene and situation for the play: ")
         
+        # Generate characters with updated user info
         self.generate_characters(scene_description, num_characters)
         self.orchestrator = Orchestrator(self.characters, self.narrator)
         self.response_processor = ResponseProcessor(self.characters, self.narrator)
         
+        # Set user info for each character
         for char in self.characters.values():
             char.set_orchestrator(self.orchestrator)
             char.set_user_info(self.user_name, self.user_description)

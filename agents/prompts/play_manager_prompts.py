@@ -6,7 +6,8 @@ User Name: {user_name}
 User Description: {user_description}
 
 Generate an interesting and dramatic scenario for an interactive play that would be engaging for this user. 
-It needs to be captivating and should allow meaningful interaction with the user's character.
+It needs to be captivating and should allow meaningful interaction with the user's character. Focus a lot to the user
+name and description. If those are too generic, then guess and fill in some details.
 
 Return ONLY a JSON object in this exact format:
 {{
@@ -30,6 +31,7 @@ Name: {user_name}
 Description: {user_description}
 
 Create exactly {num_characters} distinct characters that would make an interesting dynamic with this user.
+The characters need to be diverse and interesting.
 
 Return ONLY a JSON object with this EXACT format (no additional text or formatting):
 {{

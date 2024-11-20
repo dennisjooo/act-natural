@@ -2,7 +2,7 @@ from .message_display import display_message, get_avatar_emoji, extract_characte
 from .sidebar import display_sidebar
 from .styles import apply_custom_styles
 from .user_setup import display_user_setup
-from .scenario_setup import display_scenario_buttons
+from .scenario_setup import display_scenario_buttons, display_custom_form
 from .config import setup_page_config
 
 __all__ = [
@@ -13,5 +13,6 @@ __all__ = [
     'apply_custom_styles',
     'display_user_setup',
     'display_scenario_buttons',
-    'setup_page_config'
+    'setup_page_config',
+    'display_custom_form'
 ] 
