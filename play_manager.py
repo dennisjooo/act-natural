@@ -239,7 +239,24 @@ class PlayManager:
         yield from self._process_reactions(next_speaker, char_response)
     
     def _process_reactions(self, primary_speaker: str, primary_response: str) -> Generator[str, None, None]:
-        """Process reactions from other characters and ensure user engagement."""
+        """Process reactions from other characters and ensure user engagement.
+        
+        This method handles generating reactions from other characters to the primary speaker's
+        response, and ensures ongoing user engagement through character prompts.
+        
+        Args:
+            primary_speaker (str): The name of the character who gave the initial response
+            primary_response (str): The content of the initial response
+            
+        Yields:
+            str: Character reactions, follow-up responses, and user prompts
+            
+        The method:
+        1. Randomly selects 1-2 other characters to react to the primary response
+        2. Generates and yields their reactions
+        3. Has a 20% chance of generating follow-up exchanges between characters
+        4. Concludes by having a random character prompt the user to maintain engagement
+        """
         remaining_chars = [name for name in self.characters.keys() if name != primary_speaker]
         num_reactions = min(len(remaining_chars), random.randint(1, 2))
         
@@ -266,7 +283,7 @@ class PlayManager:
         
         yield prompt_response  # Make sure we're yielding the prompt
         self.orchestrator._update_conversation_history(prompt_char, "User", prompt_response)
-    
+        
     def _process_followup(self, speaker: str, target: str, previous_response: str) -> Generator[str, None, None]:
         """Process follow-up responses between characters.
         
