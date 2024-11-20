@@ -13,7 +13,7 @@ def setup_page_config() -> None:
         Modifies the Streamlit page configuration using st.set_page_config()
     """
     st.set_page_config(
-        page_title="Interactive Play Generator",
+        page_title="Act Natural",
         page_icon="🎭",
         initial_sidebar_state="auto"
     ) 

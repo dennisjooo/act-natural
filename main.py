@@ -37,7 +37,7 @@ def main() -> None:
     """Main application entry point"""
     setup_page_config()
     
-    st.title("Interactive Play Generator")
+    st.title("🎭 Act Natural")
     
     init_session_state()
     apply_custom_styles()
