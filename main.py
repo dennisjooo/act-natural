@@ -208,6 +208,8 @@ def main() -> None:
                     try:
                         scene_description = st.session_state.play_manager.generate_scenario()
                         st.session_state.messages = []
+                        
+                        # Get narrator's opening
                         initial_response = st.session_state.play_manager.start_play(
                             scene_description, 
                             num_characters=st.session_state.num_characters,
@@ -215,6 +217,11 @@ def main() -> None:
                             user_description=st.session_state.user_description
                         )
                         st.session_state.messages.append(("assistant", initial_response))
+                        
+                        # Get initial character response
+                        initial_char_response = st.session_state.play_manager.orchestrator.get_initial_character_response()
+                        st.session_state.messages.append(("assistant", initial_char_response))
+                        
                         st.session_state.started = True
                         st.rerun()
                     except Exception as e:

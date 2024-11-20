@@ -10,10 +10,10 @@ from agents.prompts import (
     SCENARIO_GENERATION_PROMPT,
     CHARACTER_GENERATION_PROMPT
 )
-from config.character_config import CharacterConfig
-from utils import clean_json_response
-from config.play_config import PlayConfig
 from agents.response_processor import ResponseProcessor
+from config.character_config import CharacterConfig
+from config.play_config import PlayConfig
+from utils import clean_json_response
 
 class PlayManager:
     """Manages the interactive play experience including characters, narration and orchestration.
@@ -29,6 +29,8 @@ class PlayManager:
         orchestrator (Optional[Orchestrator]): Orchestrator instance that manages character interactions
         llm (ChatGroq): The language model used for generating content
         response_processor (Optional[ResponseProcessor]): Processor for formatting character responses
+        character_context (str): Context about expected characters in the scene
+        user_role (str): The role assigned to the user in the scenario
     """
 
     def __init__(self, config: Optional[PlayConfig] = None) -> None:
@@ -45,6 +47,8 @@ class PlayManager:
         self.orchestrator: Optional[Orchestrator] = None
         self.llm = self._initialize_llm()
         self.response_processor: Optional[ResponseProcessor] = None
+        self.character_context: str = ""
+        self.user_role: str = ""
         
     def _initialize_llm(self) -> ChatGroq:
         """Initialize the language model with configuration.
@@ -146,7 +150,10 @@ class PlayManager:
         """Generate a random scenario for the play.
         
         Returns:
-            str: Generated scenario description
+            str: Generated scenario description including setting, situation, atmosphere and user role
+            
+        Side Effects:
+            Sets self.character_context and self.user_role based on generated scenario
         """
         try:
             chain = SCENARIO_GENERATION_PROMPT | self.llm
@@ -178,7 +185,7 @@ class PlayManager:
         """Get a pre-written fallback scenario if generation fails.
         
         Returns:
-            str: Random pre-written scenario
+            str: Random pre-written scenario description
         """
         fallback_scenarios = [
             "A mysterious tavern on a stormy night. Travelers from different walks of life have sought shelter here, each carrying their own secrets and stories. The atmosphere is tense with unspoken tales and hidden agendas.",
@@ -199,6 +206,10 @@ class PlayManager:
             
         Returns:
             str: Opening narration and ready message
+            
+        Side Effects:
+            Initializes characters, orchestrator, and response processor
+            Sets user name and description
         """
         num_characters = num_characters or self.config.default_num_characters
         self.user_name = user_name or self.config.default_user_name
@@ -228,7 +239,10 @@ class PlayManager:
             str: Character responses and narration
             
         Raises:
-            RuntimeError: If play hasn't been started
+            RuntimeError: If play hasn't been started (orchestrator or response_processor not initialized)
+            
+        Side Effects:
+            Updates conversation history in orchestrator
         """
         if not self.orchestrator or not self.response_processor:
             raise RuntimeError("Play must be started before processing input")
@@ -274,11 +288,8 @@ class PlayManager:
         Yields:
             str: Character reactions, follow-up responses, and user prompts
             
-        The method:
-        1. Randomly selects 1-2 other characters to react to the primary response
-        2. Generates and yields their reactions
-        3. Has a 20% chance of generating follow-up exchanges between characters
-        4. Concludes by having a random character prompt the user to maintain engagement
+        Side Effects:
+            Updates conversation history in orchestrator
         """
         remaining_chars = [name for name in self.characters.keys() if name != primary_speaker]
         num_reactions = min(len(remaining_chars), random.randint(1, 2))
@@ -317,6 +328,9 @@ class PlayManager:
             
         Yields:
             str: Follow-up responses
+            
+        Side Effects:
+            Updates conversation history in orchestrator
         """
         follow_up = self.characters[speaker].respond_to(
             previous_response,
@@ -328,6 +342,10 @@ class PlayManager:
         self.orchestrator._update_conversation_history(speaker, target, follow_up)
     
     def cleanup(self) -> None:
-        """Clean up resources when shutting down."""
+        """Clean up resources when shutting down.
+        
+        Side Effects:
+            Shuts down the orchestrator's thread pool executor if it exists
+        """
         if self.orchestrator:
             self.orchestrator.executor.shutdown()

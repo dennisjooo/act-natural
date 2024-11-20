@@ -1,12 +1,14 @@
+
 import json
 import os
 import random
 import time
 import threading
-from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
+from enum import Enum
 from langchain_groq import ChatGroq
-from typing import Dict, Tuple, Optional, List
+from typing import Dict, Tuple, Optional, List, Any
 from queue import Queue
 
 from .prompts import (
@@ -14,36 +16,174 @@ from .prompts import (
     CHARACTER_THOUGHT_PROMPT
 )
 
+class SpeakerType(Enum):
+    """Types of speakers in the conversation system."""
+    USER = "user"
+    CHARACTER = "character" 
+    ALL = "all"
+
 @dataclass
 class ConversationEvent:
     """Represents a single conversation interaction between characters.
     
     Attributes:
-        speaker: The name of the character speaking
-        target: The name of the character being spoken to
-        message: The content of the message
-        timestamp: Unix timestamp of when the message was sent
+        speaker (str): The name of the character speaking
+        target (str): The name of the character being spoken to 
+        message (str): The content of the message
+        timestamp (float): Unix timestamp of when the message was sent
     """
     speaker: str
     target: str 
     message: str
     timestamp: float = time.time()
 
-class Orchestrator:
-    """Manages conversation flow between characters and users.
+class ConversationFlow:
+    """Handles the logic for determining conversation flow and turn-taking.
     
-    Handles character interactions, conversation history, and thought generation.
-    Uses LLM to determine conversation flow and character responses.
-    
-    Attributes:
-        characters: Dictionary mapping character names to Character objects
-        narrator: Narrator instance for scene management
-        conversation_history: List of recent ConversationEvents
-        last_user_interaction: Timestamp of most recent user message
-        thoughts_queue: Queue for preloaded character thoughts
+    Manages conversation dynamics including idle time thresholds, initiation chances,
+    and response probabilities between characters and users.
     """
     
-    def __init__(self, characters: Dict, narrator) -> None:
+    def __init__(self, characters: Dict[str, Any]):
+        """Initialize the ConversationFlow manager.
+        
+        Args:
+            characters: Dictionary mapping character names to Character objects
+        """
+        self.characters = characters
+        self.last_user_interaction: float = time.time()
+        
+        # Configuration constants
+        self.IDLE_TIME_THRESHOLD = 45  # seconds before characters initiate
+        self.INITIATION_CHANCE = 0.2   # 20% chance to initiate
+        self.USER_RESPONSE_CHANCE = 0.9  # 90% chance to wait for user after question
+        self.DIRECT_RESPONSE_CHANCE = 0.9  # 90% chance to respond when directly addressed
+        
+    def should_initiate_conversation(self) -> bool:
+        """Determine if a character should initiate a new conversation thread.
+        
+        Returns:
+            bool: True if conditions are met for character initiation
+        """
+        time_since_user = time.time() - self.last_user_interaction
+        return (
+            time_since_user > self.IDLE_TIME_THRESHOLD and
+            random.random() < self.INITIATION_CHANCE
+        )
+    
+    def get_next_speaker(self, last_event: Optional[ConversationEvent], 
+                        active_characters: List[str]) -> Tuple[str, str, str]:
+        """Determine who should speak next based on conversation context.
+        
+        Args:
+            last_event: The most recent conversation event, if any
+            active_characters: List of characters eligible to speak
+            
+        Returns:
+            Tuple[str, str, str]: (next_speaker, target, reasoning)
+        """
+        if not last_event:
+            return self._get_initial_speaker(active_characters)
+            
+        if self._should_wait_for_user_response(last_event):
+            return "user", last_event.speaker, "Waiting for user's response"
+            
+        if self._should_handle_direct_address(last_event):
+            return (last_event.target, last_event.speaker, "Responding to direct address")
+            
+        return self._get_default_next_speaker(last_event, active_characters)
+
+    def _get_initial_speaker(self, active_characters: List[str]) -> Tuple[str, str, str]:
+        """Select initial speaker when there's no conversation history.
+        
+        Args:
+            active_characters: List of characters eligible to speak
+            
+        Returns:
+            Tuple[str, str, str]: (initial_speaker, target, reasoning)
+        """
+        if not active_characters:
+            return "user", "ALL", "Waiting for initial user input"
+        speaker = random.choice(active_characters)
+        return speaker, "ALL", "Starting new conversation thread"
+
+    def _should_wait_for_user_response(self, last_event: ConversationEvent) -> bool:
+        """Determine if we should wait for user response.
+        
+        Args:
+            last_event: The most recent conversation event
+            
+        Returns:
+            bool: True if system should wait for user response
+        """
+        # Wait if the last message was a question to the user
+        if (last_event.target.lower() == "user" and 
+            self._is_question(last_event.message) and 
+            random.random() < self.USER_RESPONSE_CHANCE):
+            return True
+        return False
+
+    def _should_handle_direct_address(self, last_event: ConversationEvent) -> bool:
+        """Determine if we should handle direct address.
+        
+        Args:
+            last_event: The most recent conversation event
+            
+        Returns:
+            bool: True if the last event was a direct address to a character
+        """
+        return (last_event.target in self.characters and 
+                random.random() < self.DIRECT_RESPONSE_CHANCE)
+
+    def _get_default_next_speaker(self, last_event: ConversationEvent, 
+                                active_characters: List[str]) -> Tuple[str, str, str]:
+        """Get default next speaker when no special conditions apply.
+        
+        Args:
+            last_event: The most recent conversation event
+            active_characters: List of characters eligible to speak
+            
+        Returns:
+            Tuple[str, str, str]: (next_speaker, target, reasoning)
+        """
+        if not active_characters:
+            return "user", "ALL", "Waiting for user input"
+            
+        if self.should_initiate_conversation():
+            speaker = random.choice(active_characters)
+            target = "User" if random.random() < 0.6 else random.choice(list(self.characters.keys()))
+            return speaker, target, "Initiating new conversation thread"
+            
+        return "user", last_event.speaker, "Continuing conversation"
+
+    def _is_question(self, message: str) -> bool:
+        """Check if a message is a question.
+        
+        Args:
+            message: The message content to check
+            
+        Returns:
+            bool: True if the message appears to be a question
+        """
+        question_indicators = [
+            "?", "what", "how", "why", "where", "when", "who", "which",
+            "could you", "would you", "will you", "can you", "do you"
+        ]
+        message_lower = message.lower()
+        return any(indicator in message_lower for indicator in question_indicators)
+
+class Orchestrator:
+    """Manages conversation flow and character interactions.
+    
+    Coordinates character responses, maintains conversation history, and manages
+    background thought generation for characters.
+    """
+    
+    # Constants moved to class level
+    MAX_HISTORY_LENGTH = 10
+    THOUGHT_QUEUE_MULTIPLIER = 2
+    
+    def __init__(self, characters: Dict[str, Any], narrator: Any) -> None:
         """Initialize the Orchestrator.
         
         Args:
@@ -55,7 +195,9 @@ class Orchestrator:
         self.llm = self._initialize_llm()
         self.chain = ORCHESTRATOR_FLOW_PROMPT | self.llm
         self.conversation_history: List[ConversationEvent] = []
-        self.last_user_interaction: float = time.time()
+        
+        # Initialize conversation flow manager
+        self.flow_manager = ConversationFlow(characters)
         
         # Initialize thread pool and thought queue
         self.executor = ThreadPoolExecutor(max_workers=len(characters))
@@ -74,18 +216,6 @@ class Orchestrator:
             temperature=0.25
         )
     
-    def _should_initiate_conversation(self) -> bool:
-        """Determine if characters should initiate conversation.
-        
-        Returns:
-            bool: True if enough time has passed and random chance succeeds
-        """
-        time_since_user = time.time() - self.last_user_interaction
-        return (
-            time_since_user > 45 and  # Increased from 30 to 45 seconds
-            random.random() < 0.2     # Reduced from 0.3 to 0.2 (20% chance)
-        )
-    
     def _get_active_characters(self, exclude: Optional[List[str]] = None) -> List[str]:
         """Get list of characters who haven't spoken recently.
         
@@ -93,7 +223,7 @@ class Orchestrator:
             exclude: Optional list of character names to exclude
             
         Returns:
-            List of character names who are eligible to speak
+            List[str]: List of character names who are eligible to speak
         """
         exclude = exclude or []
         recent_speakers = {
@@ -117,8 +247,9 @@ class Orchestrator:
         """Continuously generate and queue character thoughts in background."""
         while True:
             try:
-                for char_name, char in self.characters.items():
-                    if self.thoughts_queue.qsize() < len(self.characters) * 2:
+                max_queue_size = len(self.characters) * self.THOUGHT_QUEUE_MULTIPLIER
+                if self.thoughts_queue.qsize() < max_queue_size:
+                    for char_name, char in self.characters.items():
                         thought = self._generate_hidden_thought(char)
                         if thought:
                             self.thoughts_queue.put((char_name, thought))
@@ -127,14 +258,14 @@ class Orchestrator:
                 print(f"Error preloading thoughts: {e}")
                 time.sleep(5)
     
-    def _generate_hidden_thought(self, character) -> Optional[str]:
+    def _generate_hidden_thought(self, character: Any) -> Optional[str]:
         """Generate a hidden thought for a character.
         
         Args:
             character: Character instance to generate thought for
             
         Returns:
-            Generated thought string or None if generation fails
+            Optional[str]: Generated thought string or None if generation fails
         """
         try:
             chain = CHARACTER_THOUGHT_PROMPT | self.llm
@@ -153,14 +284,14 @@ class Orchestrator:
             print(f"Error generating thought: {e}")
             return None
     
-    def _format_character_traits(self, character) -> str:
+    def _format_character_traits(self, character: Any) -> str:
         """Format character traits for prompts.
         
         Args:
             character: Character instance to format traits for
             
         Returns:
-            Formatted string of character traits and values
+            str: Formatted string of character traits and values
         """
         return ", ".join([
             f"{k}: {v:.1f}" 
@@ -174,7 +305,7 @@ class Orchestrator:
             count: Number of recent events to include
             
         Returns:
-            Formatted string of recent conversation events
+            str: Formatted string of recent conversation events
         """
         recent = self.conversation_history[-count:] if self.conversation_history else []
         return "\n".join([
@@ -191,7 +322,7 @@ class Orchestrator:
             history: Formatted conversation history
             
         Returns:
-            LLM response string determining next interaction
+            str: LLM response string determining next interaction
         """
         response = self.chain.invoke({
             "scene": self.narrator.current_scene,
@@ -210,10 +341,10 @@ class Orchestrator:
             response: Raw LLM response string
             
         Returns:
-            Cleaned JSON string
+            str: Cleaned JSON string
             
         Raises:
-            Exception if JSON cleaning/parsing fails
+            Exception: If JSON cleaning/parsing fails
         """
         try:
             # Remove any markdown code blocks
@@ -244,17 +375,17 @@ class Orchestrator:
             print(f"Original response: {response}")
             raise
     
-    def _parse_flow_response(self, response: str) -> Dict:
+    def _parse_flow_response(self, response: str) -> Dict[str, str]:
         """Parse the LLM's flow response into structured data.
         
         Args:
             response: JSON response string from LLM
             
         Returns:
-            Dictionary containing parsed response data
+            Dict[str, str]: Dictionary containing parsed response data
             
         Raises:
-            ValueError if response is missing required keys
+            ValueError: If response is missing required keys
         """
         try:
             result = json.loads(response)
@@ -281,11 +412,17 @@ class Orchestrator:
         ))
         
         # Keep only recent history
-        if len(self.conversation_history) > 10:
-            self.conversation_history = self.conversation_history[-10:]
+        if len(self.conversation_history) > self.MAX_HISTORY_LENGTH:
+            self.conversation_history = self.conversation_history[-self.MAX_HISTORY_LENGTH:]
     
     def _process_character_response(self, char_name: str, message: str, target: str) -> None:
-        """Process a character's response in the thread pool."""
+        """Process a character's response in the thread pool.
+        
+        Args:
+            char_name: Name of the character responding
+            message: Message being responded to
+            target: Target of the response
+        """
         try:
             # Check recent responses for similar topics
             recent_events = self.conversation_history[-3:] if self.conversation_history else []
@@ -311,7 +448,15 @@ class Orchestrator:
             print(f"Error processing character response: {e}")
     
     def _check_similar_topics(self, msg1: str, msg2: str) -> bool:
-        """Check if two messages discuss similar topics."""
+        """Check if two messages discuss similar topics.
+        
+        Args:
+            msg1: First message to compare
+            msg2: Second message to compare
+            
+        Returns:
+            bool: True if messages contain similar topics
+        """
         # Add keywords for different topics your characters might discuss
         topic_keywords = {
             "mystery": ["journal", "key", "symbols", "passage", "chamber", "secret"],
@@ -338,7 +483,7 @@ class Orchestrator:
             last_speaker: Name of the most recent speaker
             
         Returns:
-            Tuple of (next_speaker, target, reasoning)
+            Tuple[str, str, str]: Tuple of (next_speaker, target, reasoning)
         """
         if last_speaker.lower() == "user":
             # Ensure a character responds to the user
@@ -360,7 +505,7 @@ class Orchestrator:
         """Format character information for prompts.
         
         Returns:
-            Formatted string containing all character information
+            str: Formatted string containing all character information
         """
         return "\n".join(
             f"{name} - {self._format_character_traits(char)}"
@@ -391,95 +536,59 @@ class Orchestrator:
         return any(indicator in message_lower for indicator in question_indicators)
     
     def determine_next_interaction(self, last_speaker: str, last_message: str) -> Tuple[str, str, str]:
-        """Determine the next interaction in the conversation flow."""
+        """Determine the next interaction in the conversation flow.
+        
+        Args:
+            last_speaker: Name of the most recent speaker
+            last_message: Content of the most recent message
+            
+        Returns:
+            Tuple[str, str, str]: Tuple of (next_speaker, target, reasoning)
+        """
         try:
             if last_speaker == "User":
-                self.last_user_interaction = time.time()
+                self.flow_manager.last_user_interaction = time.time()
             
-            # Get the last conversation event
+            active_chars = self._get_active_characters()
             last_event = self.conversation_history[-1] if self.conversation_history else None
             
-            # If someone was directly addressed, give them high priority to respond
-            if last_event and last_event.target in self.characters:
-                # 90% chance to let the addressed character respond
-                if random.random() < 0.9:
-                    return (
-                        last_event.target,
-                        last_speaker,
-                        "Responding to direct address"
-                    )
+            next_speaker, target, reasoning = self.flow_manager.get_next_speaker(
+                last_event, active_chars
+            )
             
-            # Rest of the existing logic for similar responses...
-            recent_events = self.conversation_history[-3:] if self.conversation_history else []
-            similar_responses = [
-                event for event in recent_events 
-                if any(keyword in event.message.lower() for keyword in 
-                      ["journal", "key", "symbols", "passage", "chamber"])
-            ]
+            self._update_conversation_history(last_speaker, target, last_message)
             
-            # Existing logic continues...
-            if last_speaker == "User":
-                self.last_user_interaction = time.time()
+            if next_speaker in self.characters:
+                self._process_character_response(next_speaker, last_message, target)
             
-            # Check if the last message was a question to the user
-            last_event = self.conversation_history[-1] if self.conversation_history else None
-            if last_event and self._is_question_to_user(last_event.message, last_event.target):
-                if random.random() < 0.9:  # 90% chance to wait for user
-                    return "user", last_speaker, "Responding to direct question"
-            
-            # Check if the last message was a question to the user
-            last_event = self.conversation_history[-1] if self.conversation_history else None
-            if last_event and self._is_question_to_user(last_event.message, last_event.target):
-                # Strongly prefer user response after being asked a question
-                if random.random() < 0.9:  # 90% chance to wait for user
-                    return "user", last_speaker, "Responding to direct question"
-            
-            # Rest of the existing conversation initiation logic
-            if self._should_initiate_conversation():
-                active_chars = self._get_active_characters()
-                if active_chars:
-                    initiator = random.choice(active_chars)
-                    # Increase chance of targeting user when initiating
-                    if random.random() < 0.6:  # 60% chance to target user
-                        target = "User"
-                    else:
-                        target = random.choice([
-                            name for name in self.characters.keys()
-                            if name != initiator
-                        ])
-                    return (
-                        initiator,
-                        target,
-                        "Initiating new conversation thread"
-                    )
-            
-            # Normal flow determination with modified logic
-            recent_history = self._format_recent_history()
-            response = self._get_flow_response(last_speaker, last_message, recent_history)
-            result = self._parse_flow_response(response)
-            
-            # If LLM suggests a character speak after a question to user,
-            # override to prefer user response
-            if (last_event and 
-                self._is_question_to_user(last_event.message, last_event.target) and
-                result["next_speaker"] != "user" and 
-                random.random() < 0.8):  # 80% chance to override
-                result["next_speaker"] = "user"
-                result["target"] = last_speaker
-                result["reasoning"] = "Waiting for user's response to question"
-            
-            # Rest of the existing logic...
-            self._update_conversation_history(last_speaker, result["target"], last_message)
-            
-            if result["next_speaker"] in self.characters and result["next_speaker"] != "user":
-                self._process_character_response(
-                    result["next_speaker"],
-                    last_message,
-                    result["target"]
-                )
-            
-            return result["next_speaker"], result["target"], result["reasoning"]
+            return next_speaker, target, reasoning
             
         except Exception as e:
             print(f"Error in orchestrator: {e}")
             return self._get_fallback_interaction(last_speaker)
+    
+    def get_initial_character_response(self) -> str:
+        """Generate initial character response after scene is set.
+        
+        Returns:
+            str: Initial character response
+        """
+        try:
+            # Pick a random character to speak first
+            initial_speaker = random.choice(list(self.characters.keys()))
+            char = self.characters[initial_speaker]
+            
+            # Generate response to scene setup
+            response = char.respond_to(
+                "SCENE_START",  # Special signal
+                "ALL",  # Speaking to everyone
+                {"scene": self.narrator.current_scene}
+            )
+            
+            # Update conversation history
+            self._update_conversation_history(initial_speaker, "ALL", response)
+            return response
+            
+        except Exception as e:
+            print(f"Error generating initial response: {e}")
+            return f"[{list(self.characters.keys())[0]}]: *looks around curiously*"

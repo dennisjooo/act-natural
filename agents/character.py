@@ -163,8 +163,10 @@ class Character:
         hidden_thought = self.get_current_thought()
         
         try:
-            # Add debug print
-            if message == "prompt_user":
+            # Handle special message types
+            if message == "SCENE_START":
+                print(f"Character {self.name} generating initial scene response...")
+            elif message == "prompt_user":
                 print(f"Character {self.name} generating user prompt...")
             
             response = self.chain.invoke({
@@ -174,11 +176,15 @@ class Character:
                 "hidden_motive": self.hidden_motive,
                 "context": context.get("scene", ""),
                 "speaker": speaker,
-                "message": "What are your thoughts on this?" if message == "prompt_user" else message,
+                "message": (
+                    message if message in ["SCENE_START", "prompt_user"] 
+                    else ("What are your thoughts on this?" if message == "prompt_user" 
+                    else message)
+                ),
                 "memory": self.memory.get_recent_memories(),
                 "current_thought": (
-                    "I should engage the user in conversation" 
-                    if message == "prompt_user" 
+                    "I should take in my surroundings" if message == "SCENE_START"
+                    else "I should engage the user in conversation" if message == "prompt_user"
                     else (hidden_thought or "Just focusing on the current situation.")
                 ),
                 "user_name": getattr(self, 'user_name', 'User')
@@ -201,6 +207,8 @@ class Character:
             
         except Exception as e:
             print(f"Error generating character response: {e}")
+            if message == "SCENE_START":
+                return f"[{self.name}]: (enters the scene, looking around with interest)"
             if message == "prompt_user":
                 return f"[{self.name}]: What are your thoughts on this situation?"
             return f"[{self.name}]: *looks uncertain*"
