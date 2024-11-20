@@ -14,6 +14,7 @@ from .prompts import (
     ORCHESTRATOR_FLOW_PROMPT,
     CHARACTER_THOUGHT_PROMPT
 )
+from .game_log import GameLog
 
 class SpeakerType(Enum):
     """Types of speakers in the conversation system."""
@@ -202,6 +203,12 @@ class Orchestrator:
         self.executor = ThreadPoolExecutor(max_workers=len(characters))
         self.thoughts_queue: Queue = Queue()
         self._start_thoughts_thread()
+        
+        self.game_log = GameLog()
+        
+        # Log initial character information
+        for name, char in characters.items():
+            self.game_log.add_character(name, char.config.__dict__)
     
     def _initialize_llm(self) -> ChatGroq:
         """Initialize the language model.
@@ -274,7 +281,7 @@ class Orchestrator:
                 time.sleep(5)
     
     def _generate_hidden_thought(self, character: Any) -> Optional[str]:
-        """Generate a hidden thought for a character.
+        """Generate and log a hidden thought for a character.
         
         Args:
             character: Character instance to generate thought for
@@ -293,7 +300,15 @@ class Orchestrator:
                 "scene": self.narrator.current_scene,
                 "history": recent_history
             }).content.strip()
+
+            # Log the thought
+            if response:
+                self.game_log.log_event("hidden_thought", {
+                    "character": character.config.name,
+                    "thought": response
+                })
             return response
+            
         except Exception as e:
             print(f"Error generating thought: {e}")
             return None
@@ -412,13 +427,21 @@ class Orchestrator:
             raise
     
     def _update_conversation_history(self, speaker: str, target: str, message: str) -> None:
-        """Update the conversation history with new event.
+        """Update the conversation history and log the interaction.
+        
+        Maintains a rolling window of recent conversation events and logs them to the game log.
         
         Args:
-            speaker: Name of the speaking character
-            target: Name of the character being spoken to
-            message: Content of the message
+            speaker (str): Name of the character or user who is speaking
+            target (str): Name of the character or user being addressed 
+            message (str): The actual message content being spoken
+            
+        Side Effects:
+            - Appends new ConversationEvent to self.conversation_history
+            - Trims conversation_history if it exceeds MAX_HISTORY_LENGTH
+            - Logs the dialogue event to self.game_log
         """
+        # Existing conversation history update
         self.conversation_history.append(ConversationEvent(
             speaker=speaker,
             target=target,
@@ -428,7 +451,13 @@ class Orchestrator:
         # Keep only recent history
         if len(self.conversation_history) > self.MAX_HISTORY_LENGTH:
             self.conversation_history = self.conversation_history[-self.MAX_HISTORY_LENGTH:]
-    
+            
+        # Log the conversation event
+        self.game_log.log_event("dialogue", {
+            "speaker": speaker,
+            "target": target,
+            "message": message
+        })
     def _process_character_response(self, char_name: str, message: str, target: str) -> None:
         """Process a character's response in the thread pool.
         
@@ -550,7 +579,7 @@ class Orchestrator:
         return any(indicator in message_lower for indicator in question_indicators)
     
     def determine_next_interaction(self, last_speaker: str, last_message: str) -> Tuple[str, str, str]:
-        """Determine the next interaction in the conversation flow.
+        """Determine and log the next interaction in the conversation flow.
         
         Args:
             last_speaker: Name of the most recent speaker
@@ -574,6 +603,14 @@ class Orchestrator:
             
             if next_speaker in self.characters:
                 self._process_character_response(next_speaker, last_message, target)
+            
+            # Log the flow decision
+            self.game_log.log_event("flow_decision", {
+                "last_speaker": last_speaker,
+                "next_speaker": next_speaker,
+                "target": target,
+                "reasoning": reasoning
+            })
             
             return next_speaker, target, reasoning
             

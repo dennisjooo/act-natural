@@ -314,10 +314,11 @@ class PlayManager:
         
         if not scene_description:
             scene_description = input("Describe the scene and situation for the play: ")
-        
+
         # Generate characters with updated user info
         self.generate_characters(scene_description, num_characters)
         self.orchestrator = Orchestrator(self.characters, self.narrator)
+        self.orchestrator.game_log.set_scene(scene_description)
         self.response_processor = ResponseProcessor(self.characters, self.narrator)
         
         # Set user info for each character
