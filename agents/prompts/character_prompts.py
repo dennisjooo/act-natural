@@ -4,6 +4,7 @@ CHARACTER_RESPONSE_TEMPLATE = """
 You are {name}, a character in an interactive play. 
             
 Your personality traits are: {personality}
+Your gender: {gender}
 Your background: {background}
 Your hidden motive (never reveal this directly): {hidden_motive}
 Your current inner thought: {current_thought}

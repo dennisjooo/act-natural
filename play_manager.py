@@ -18,26 +18,46 @@ from utils import clean_json_response
 class PlayManager:
     """Manages the interactive play experience including characters, narration and orchestration.
     
-    Handles character generation, scenario creation, and processing user interactions with the play.
+    The PlayManager class is responsible for coordinating all aspects of the interactive play experience.
+    It handles character generation, scenario creation, and processes user interactions with the play.
     
     Attributes:
-        config (PlayConfig): Configuration settings for the play
-        narrator (Narrator): The Narrator instance that provides scene descriptions and observations
+        config (PlayConfig): Configuration settings for the play including defaults and parameters
+        narrator (Narrator): Narrator instance that provides scene descriptions and observations
         characters (Dict[str, Character]): Dictionary mapping character names to Character instances
-        user_name (str): Name used to identify the user in interactions
-        user_description (str): Description of the user for character interactions
-        orchestrator (Optional[Orchestrator]): Orchestrator instance that manages character interactions
-        llm (ChatGroq): The language model used for generating content
+        user_name (str): Name used to identify the user in character interactions
+        user_description (str): Description of the user's character/role for interactions
+        orchestrator (Optional[Orchestrator]): Orchestrator instance managing character interactions
+        llm (ChatGroq): Language model instance used for content generation
         response_processor (Optional[ResponseProcessor]): Processor for formatting character responses
-        character_context (str): Context about expected characters in the scene
-        user_role (str): The role assigned to the user in the scenario
+        character_context (str): Additional context about expected characters in the scene
+        user_role (str): The specific role/position assigned to the user in the scenario
+        
+    The PlayManager serves as the central coordinator, initializing and managing all the components
+    needed for the interactive play experience. It handles:
+    - Character generation and management
+    - Scene/scenario creation
+    - Processing user input and generating responses
+    - Coordinating character interactions
+    - Managing the flow of conversation
     """
 
     def __init__(self, config: Optional[PlayConfig] = None) -> None:
-        """Initialize the PlayManager with optional configuration.
+        """Initialize a new PlayManager instance.
+        
+        Creates a new PlayManager with the specified configuration. If no configuration is provided,
+        uses default PlayConfig settings.
         
         Args:
-            config (Optional[PlayConfig]): Configuration settings for the play. Defaults to None.
+            config (Optional[PlayConfig]): Configuration settings for the play. If None, uses defaults.
+            
+        The initialization process:
+        1. Sets up basic configuration and state
+        2. Creates the narrator instance
+        3. Initializes empty character dictionary
+        4. Sets default user information
+        5. Creates language model instance
+        6. Prepares for orchestrator and response processor
         """
         self.config = config or PlayConfig()
         self.narrator = Narrator()
@@ -51,10 +71,17 @@ class PlayManager:
         self.user_role: str = ""
         
     def _initialize_llm(self) -> ChatGroq:
-        """Initialize the language model with configuration.
+        """Initialize and configure the language model instance.
+        
+        Creates a new ChatGroq instance with appropriate configuration settings from environment
+        variables. Sets up the model with specified temperature for content generation.
         
         Returns:
-            ChatGroq: Configured language model instance
+            ChatGroq: Configured language model instance ready for use
+            
+        The method uses environment variables:
+        - GROQ_API_KEY: API key for authentication
+        - SCENARIO_MODEL: Name of the model to use
         """
         return ChatGroq(
             api_key=os.getenv("GROQ_API_KEY"),
@@ -63,11 +90,25 @@ class PlayManager:
         )
     
     def generate_characters(self, scene_description: str, num_characters: int = 3) -> None:
-        """Generate characters based on the scene description.
+        """Generate character set based on the scene description.
+        
+        Creates a set of characters appropriate for the given scene, with personalities,
+        backgrounds, and motivations that fit the scenario.
         
         Args:
-            scene_description (str): Description of the scene to base characters on
-            num_characters (int): Number of characters to generate. Defaults to 3.
+            scene_description (str): Detailed description of the scene and situation
+            num_characters (int): Number of characters to generate. Defaults to 3
+            
+        Side Effects:
+            - Populates self.characters with generated Character instances
+            - Prints status messages about character generation
+            - Falls back to default characters if generation fails
+            
+        The generation process:
+        1. Combines scene description with any existing character context
+        2. Uses LLM to generate character details
+        3. Creates CharacterConfig instances for each character
+        4. Instantiates Character objects and adds them to self.characters
         """
         try:
             # Include character context in the scene description if available
@@ -110,7 +151,26 @@ class PlayManager:
             self.generate_fallback_characters()
     
     def generate_fallback_characters(self) -> None:
-        """Create default characters if generation fails."""
+        """Create a set of default characters when generation fails.
+        
+        Instantiates a predefined set of fallback characters with fixed attributes
+        when the dynamic character generation process encounters an error.
+        
+        Side Effects:
+            Populates self.characters with predefined Character instances
+            
+        The fallback characters include:
+        - Adventurer: A brave explorer seeking treasures
+        - Scholar: An intelligent researcher studying ruins
+        - Guide: A mysterious local expert
+        
+        Each character has predefined:
+        - Name, gender, description
+        - Personality traits
+        - Background story
+        - Hidden motives
+        - Visual emoji representation
+        """
         fallback_chars = {
             "Adventurer": CharacterConfig(
                 name="Adventurer",
@@ -147,13 +207,23 @@ class PlayManager:
         }
     
     def generate_scenario(self) -> str:
-        """Generate a random scenario for the play.
+        """Generate a random scenario for the interactive play.
+        
+        Creates a detailed scenario description including setting, situation, atmosphere,
+        and the user's role within the scene.
         
         Returns:
-            str: Generated scenario description including setting, situation, atmosphere and user role
+            str: Complete scenario description combining all elements
             
         Side Effects:
-            Sets self.character_context and self.user_role based on generated scenario
+            - Sets self.character_context with expected character types
+            - Sets self.user_role with the user's assigned role
+            
+        The generation process:
+        1. Uses LLM to generate scenario components
+        2. Extracts and stores character context and user role
+        3. Combines elements into cohesive description
+        4. Falls back to predefined scenarios if generation fails
         """
         try:
             chain = SCENARIO_GENERATION_PROMPT | self.llm
@@ -182,10 +252,24 @@ class PlayManager:
             return self.get_fallback_scenario()
     
     def get_fallback_scenario(self) -> str:
-        """Get a pre-written fallback scenario if generation fails.
+        """Provide a pre-written scenario when generation fails.
+        
+        Returns a randomly selected predefined scenario description when
+        the dynamic scenario generation encounters an error.
         
         Returns:
-            str: Random pre-written scenario description
+            str: Complete description of a predefined scenario
+            
+        The fallback scenarios include:
+        - A mysterious tavern during a storm
+        - An abandoned mansion during a masquerade
+        - A malfunctioning space station
+        
+        Each scenario provides:
+        - Physical setting
+        - Current situation
+        - Atmospheric elements
+        - Character dynamics
         """
         fallback_scenarios = [
             "A mysterious tavern on a stormy night. Travelers from different walks of life have sought shelter here, each carrying their own secrets and stories. The atmosphere is tense with unspoken tales and hidden agendas.",
@@ -196,20 +280,32 @@ class PlayManager:
     
     def start_play(self, scene_description: str, num_characters: Optional[int] = None, 
                    user_name: Optional[str] = None, user_description: Optional[str] = None) -> str:
-        """Start the interactive play with given scene and characters.
+        """Initialize and start the interactive play experience.
+        
+        Sets up all necessary components and begins the interactive play session
+        with the specified scene and characters.
         
         Args:
-            scene_description (str): Description of the scene and situation
-            num_characters (Optional[int]): Number of characters to generate. Defaults to config value.
-            user_name (Optional[str]): Name of the user. Defaults to config value.
-            user_description (Optional[str]): Description of the user. Defaults to config value.
+            scene_description (str): Detailed description of the scene and situation
+            num_characters (Optional[int]): Number of characters to generate
+            user_name (Optional[str]): Name for the user's character
+            user_description (Optional[str]): Description of the user's character
             
         Returns:
             str: Opening narration and ready message
             
         Side Effects:
-            Initializes characters, orchestrator, and response processor
-            Sets user name and description
+            - Sets user information
+            - Generates characters
+            - Initializes orchestrator and response processor
+            - Configures characters with user info and orchestrator
+            
+        The startup process:
+        1. Sets user information
+        2. Generates appropriate number of characters
+        3. Creates orchestrator and response processor
+        4. Configures all characters with necessary information
+        5. Sets initial scene through narrator
         """
         # Set user info before any character generation or scenario creation
         self.user_name = user_name or self.config.default_user_name
@@ -235,24 +331,32 @@ class PlayManager:
     def process_input(self, user_input: str) -> Generator[str, None, None]:
         """Process user input and generate character responses.
         
+        Handles user input by determining appropriate character responses,
+        processing those responses, and managing the flow of conversation.
+        
         Args:
-            user_input (str): The user's input message
+            user_input (str): The user's input text
             
         Yields:
-            str: Character responses and narration
+            str: Character responses, reactions, and follow-up messages
             
         Raises:
-            RuntimeError: If play hasn't been started (orchestrator or response_processor not initialized)
+            RuntimeError: If play hasn't been properly started
             
-        Side Effects:
-            Updates conversation history in orchestrator
+        The processing flow:
+        1. Validates play state
+        2. Formats user input
+        3. Determines next speaker
+        4. Generates primary response
+        5. Processes reactions from other characters
+        6. Updates conversation history
         """
         if not self.orchestrator or not self.response_processor:
             raise RuntimeError("Play must be started before processing input")
             
-         # Ensure input is wrapped in quotes, but avoid double-wrapping
-        cleaned_input = user_input.strip().strip("\"\'")  # Remove any existing quotes
-        formatted_input = f'"{cleaned_input}"'  # Always wrap in double quotes
+        # Ensure input is wrapped in quotes, but avoid double-wrapping
+        cleaned_input = user_input.strip().strip("\"\'")
+        formatted_input = f'"{cleaned_input}"'
         
         # Get next speaker and target
         next_speaker, target, _ = self.orchestrator.determine_next_interaction(
@@ -260,12 +364,13 @@ class PlayManager:
         )
         
         if next_speaker not in self.characters:
-            return
-            
+            next_speaker = random.choice(list(self.characters.keys()))
+            target = "User"
+        
         # Primary character response
         char_response = self.characters[next_speaker].respond_to(
             formatted_input,
-            target,  # Use the determined target instead of hardcoding "User"
+            target,
             {"scene": self.narrator.current_scene}
         )
         
@@ -279,20 +384,26 @@ class PlayManager:
         yield from self._process_reactions(next_speaker, char_response)
     
     def _process_reactions(self, primary_speaker: str, primary_response: str) -> Generator[str, None, None]:
-        """Process reactions from other characters and ensure user engagement.
+        """Process reactions from other characters to maintain engagement.
         
-        This method handles generating reactions from other characters to the primary speaker's
-        response, and ensures ongoing user engagement through character prompts.
+        Generates and manages reactions from other characters to the primary speaker's
+        response, ensuring ongoing engagement through varied interactions.
         
         Args:
-            primary_speaker (str): The name of the character who gave the initial response
-            primary_response (str): The content of the initial response
+            primary_speaker (str): Name of the character who gave initial response
+            primary_response (str): Content of the initial response
             
         Yields:
             str: Character reactions, follow-up responses, and user prompts
             
         Side Effects:
             Updates conversation history in orchestrator
+            
+        The reaction process:
+        1. Selects random subset of characters to react
+        2. Generates and processes their reactions
+        3. Occasionally generates follow-up interactions
+        4. Ensures user engagement through character prompts
         """
         remaining_chars = [name for name in self.characters.keys() if name != primary_speaker]
         num_reactions = min(len(remaining_chars), random.randint(1, 2))
@@ -324,16 +435,24 @@ class PlayManager:
     def _process_followup(self, speaker: str, target: str, previous_response: str) -> Generator[str, None, None]:
         """Process follow-up responses between characters.
         
+        Generates and handles follow-up interactions between characters to create
+        more natural conversation flow and deeper character interactions.
+        
         Args:
             speaker (str): Name of the character speaking
-            target (str): Name of the character being spoken to
-            previous_response (str): The previous response being followed up on
+            target (str): Name of the character being addressed
+            previous_response (str): The response being followed up on
             
         Yields:
-            str: Follow-up responses
+            str: Follow-up responses from characters
             
         Side Effects:
             Updates conversation history in orchestrator
+            
+        The follow-up process:
+        1. Generates appropriate follow-up response
+        2. Processes the response through response processor
+        3. Updates conversation history
         """
         follow_up = self.characters[speaker].respond_to(
             previous_response,
@@ -345,10 +464,18 @@ class PlayManager:
         self.orchestrator._update_conversation_history(speaker, target, follow_up)
     
     def cleanup(self) -> None:
-        """Clean up resources when shutting down.
+        """Clean up resources when shutting down the play manager.
+        
+        Performs necessary cleanup operations when the play session ends,
+        ensuring proper resource management.
         
         Side Effects:
             Shuts down the orchestrator's thread pool executor if it exists
+            
+        The cleanup process:
+        1. Checks for active orchestrator
+        2. Shuts down thread pool executor if present
+        3. Ensures proper resource release
         """
         if self.orchestrator:
             self.orchestrator.executor.shutdown()

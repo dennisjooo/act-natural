@@ -84,6 +84,15 @@ class Character:
         else:
             return "👤"
     
+    @property
+    def gender(self) -> str:
+        """Get the character's gender.
+        
+        Returns:
+            str: The character's configured gender
+        """
+        return self.config.gender
+    
     def _initialize_llm(self) -> ChatGroq:
         """Initialize the language model for generating responses.
         
@@ -121,13 +130,22 @@ class Character:
         """
         if not self.thoughts_queue:
             return None
-            
+        
         try:
-            char_name, thought = self.thoughts_queue.get_nowait()
-            if char_name == self.name:
-                return thought
-            self.thoughts_queue.put((char_name, thought))
+            # Check multiple items in queue to find a thought for this character
+            for _ in range(self.thoughts_queue.qsize()):
+                char_name, thought = self.thoughts_queue.get_nowait()
+                
+                # If thought is for this character, return it
+                if char_name == self.name:
+                    return thought
+                    
+                # Put back thoughts for other characters
+                self.thoughts_queue.put((char_name, thought))
+                
+            # If we didn't find a thought for this character after checking queue
             return None
+            
         except Empty:
             return None
     
@@ -172,6 +190,7 @@ class Character:
             response = self.chain.invoke({
                 "name": self.name,
                 "personality": self._format_personality(),
+                "gender": self.gender,
                 "background": self.background,
                 "hidden_motive": self.hidden_motive,
                 "context": context.get("scene", ""),

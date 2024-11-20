@@ -1,4 +1,3 @@
-
 import json
 import os
 import random
@@ -248,11 +247,27 @@ class Orchestrator:
         while True:
             try:
                 max_queue_size = len(self.characters) * self.THOUGHT_QUEUE_MULTIPLIER
-                if self.thoughts_queue.qsize() < max_queue_size:
-                    for char_name, char in self.characters.items():
-                        thought = self._generate_hidden_thought(char)
-                        if thought:
-                            self.thoughts_queue.put((char_name, thought))
+                current_size = self.thoughts_queue.qsize()
+                
+                # Check if we need more thoughts
+                if current_size < max_queue_size:
+                    # Count thoughts per character in queue
+                    char_thought_counts = {char_name: 0 for char_name in self.characters}
+                    
+                    # Count existing thoughts
+                    for _ in range(current_size):
+                        char_name, thought = self.thoughts_queue.get()
+                        char_thought_counts[char_name] += 1
+                        self.thoughts_queue.put((char_name, thought))
+                    
+                    # Generate thoughts for characters with fewer thoughts
+                    for char_name, count in char_thought_counts.items():
+                        if count < self.THOUGHT_QUEUE_MULTIPLIER:
+                            char = self.characters[char_name]
+                            thought = self._generate_hidden_thought(char)
+                            if thought:
+                                self.thoughts_queue.put((char_name, thought))
+                            
                 time.sleep(1)
             except Exception as e:
                 print(f"Error preloading thoughts: {e}")
@@ -278,7 +293,6 @@ class Orchestrator:
                 "scene": self.narrator.current_scene,
                 "history": recent_history
             }).content.strip()
-            
             return response
         except Exception as e:
             print(f"Error generating thought: {e}")
