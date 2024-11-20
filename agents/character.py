@@ -92,7 +92,7 @@ class Character:
         """
         return ChatGroq(
             api_key=os.getenv("GROQ_API_KEY"),
-            model_name="llama-3.1-8b-instant"
+            model_name=os.getenv("CHARACTER_MODEL"),
         )
     
     def _format_personality(self) -> str:

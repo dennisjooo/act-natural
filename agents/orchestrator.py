@@ -70,7 +70,7 @@ class Orchestrator:
         """
         return ChatGroq(
             api_key=os.getenv("GROQ_API_KEY"),
-            model_name="gemma2-9b-it",
+            model_name=os.getenv("ORCHESTRATOR_MODEL"),
             temperature=0.25
         )
     
@@ -285,22 +285,51 @@ class Orchestrator:
             self.conversation_history = self.conversation_history[-10:]
     
     def _process_character_response(self, char_name: str, message: str, target: str) -> None:
-        """Process a character's response in the thread pool.
-        
-        Args:
-            char_name: Name of the responding character
-            message: Message being responded to
-            target: Name of character being responded to
-        """
+        """Process a character's response in the thread pool."""
         try:
+            # Check recent responses for similar topics
+            recent_events = self.conversation_history[-3:] if self.conversation_history else []
+            similar_topics = any(
+                event.speaker != char_name and
+                self._check_similar_topics(message, event.message)
+                for event in recent_events
+            )
+            
+            # If similar topics found, add context to encourage a different perspective
+            context = {
+                "scene": self.narrator.current_scene,
+                "avoid_similar_response": similar_topics
+            }
+            
             self.executor.submit(
                 self.characters[char_name].respond_to,
                 message,
                 target,
-                {"scene": self.narrator.current_scene}
+                context
             )
         except Exception as e:
             print(f"Error processing character response: {e}")
+    
+    def _check_similar_topics(self, msg1: str, msg2: str) -> bool:
+        """Check if two messages discuss similar topics."""
+        # Add keywords for different topics your characters might discuss
+        topic_keywords = {
+            "mystery": ["journal", "key", "symbols", "passage", "chamber", "secret"],
+            "investigation": ["found", "discovered", "search", "look", "examine"],
+            "speculation": ["think", "believe", "suspect", "perhaps", "maybe"],
+            # Add more topic categories as needed
+        }
+        
+        msg1_lower = msg1.lower()
+        msg2_lower = msg2.lower()
+        
+        for keywords in topic_keywords.values():
+            # If both messages contain keywords from the same topic
+            if (any(word in msg1_lower for word in keywords) and 
+                any(word in msg2_lower for word in keywords)):
+                return True
+        
+        return False
     
     def _get_fallback_interaction(self, last_speaker: str) -> Tuple[str, str, str]:
         """Provide fallback interaction if normal flow fails.
@@ -366,6 +395,37 @@ class Orchestrator:
         try:
             if last_speaker == "User":
                 self.last_user_interaction = time.time()
+            
+            # Get the last conversation event
+            last_event = self.conversation_history[-1] if self.conversation_history else None
+            
+            # If someone was directly addressed, give them high priority to respond
+            if last_event and last_event.target in self.characters:
+                # 90% chance to let the addressed character respond
+                if random.random() < 0.9:
+                    return (
+                        last_event.target,
+                        last_speaker,
+                        "Responding to direct address"
+                    )
+            
+            # Rest of the existing logic for similar responses...
+            recent_events = self.conversation_history[-3:] if self.conversation_history else []
+            similar_responses = [
+                event for event in recent_events 
+                if any(keyword in event.message.lower() for keyword in 
+                      ["journal", "key", "symbols", "passage", "chamber"])
+            ]
+            
+            # Existing logic continues...
+            if last_speaker == "User":
+                self.last_user_interaction = time.time()
+            
+            # Check if the last message was a question to the user
+            last_event = self.conversation_history[-1] if self.conversation_history else None
+            if last_event and self._is_question_to_user(last_event.message, last_event.target):
+                if random.random() < 0.9:  # 90% chance to wait for user
+                    return "user", last_speaker, "Responding to direct question"
             
             # Check if the last message was a question to the user
             last_event = self.conversation_history[-1] if self.conversation_history else None

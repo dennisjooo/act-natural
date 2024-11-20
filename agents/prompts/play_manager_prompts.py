@@ -57,6 +57,7 @@ Rules:
 - Relation to user should describe their initial attitude or connection to the user character
 - No additional fields or text outside the JSON structure
 - Exactly {num_characters} characters in the array
+- Feel free to add as much as 5 traits to really flesh out the character
 """
 
 CHARACTER_GENERATION_PROMPT = PromptTemplate(

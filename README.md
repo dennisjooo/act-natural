@@ -4,11 +4,14 @@
 
 ## What is this?
 
-act-natural is an interactive theater experience where AI characters try (and sometimes hilariously fail) to act natural. Using Groq's LLMs and some questionable decision-making, we've created a space where:
+act-natural is an interactive theatre experience where AI characters try (and sometimes hilariously fail) to act natural. Using Groq's LLMs and some questionable decision-making, we've created a space where:
 
 - AI characters improvise scenes with hidden motives
 - A narrator occasionally chimes in with dramatic flair
 - You get to participate in whatever chaos unfolds
+
+Basically I'm trying to figure out how to create an agentic system that orchestrates together to user inputs.
+Making the agents "act in a play" is just a fun way to explore this and to kill time at work.
 
 ## Features
 
@@ -32,6 +35,9 @@ pip install -r requirements.txt
 
 ```bash
 GROQ_API_KEY=your_api_key_here
+CHARACTER_MODEL=your_character_model_here
+ORCHESTRATOR_MODEL=your_orchestrator_model_here
+SCENARIO_MODEL=your_scenario_model_here
 ```
 
 4. Run the application:
@@ -48,3 +54,12 @@ The system uses several key components (that occasionally cooperate):
 - **Characters**: AI actors doing their best to stay in character
 - **Narrator**: Adds dramatic flair when things get interesting
 - **Orchestrator**: Makes sure characters actually talk to each other
+
+## Technical Notes and Ideas
+
+- Using Groq's LLMs (Gemma 2 for orchestrator, Llama 3.1 8B for characters, and Llama 3.1 70B for scenario generation)
+- Highly recommend using more powerful models for the orchestrator and scenario generation
+- Langchain is used to manage the conversation history and to keep track of the characters' internal monologues
+- Would be fun to add a vector database to keep track of the characters' memories, or even better, a graph database
+- Also fun to add dice rolls and other randomness to the character's actions (ala D&D), that being said the current
+  implementation is pretty janky and could use some work.
