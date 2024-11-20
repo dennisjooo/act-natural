@@ -1,10 +1,10 @@
-# 🎭 act-natural
+# 🎭 Act Natural
 
 *Because teaching AI to act is exactly as chaotic as it sounds*
 
 ## What is this?
 
-act-natural is an interactive theatre experience where AI characters try (and sometimes hilariously fail) to act natural. Using Groq's LLMs and some questionable decision-making, we've created a space where:
+Act Natural is an interactive theatre experience where AI characters try (and sometimes hilariously fail) to act natural. Using Groq's LLMs and some questionable decision-making, we've created a space where:
 
 - AI characters improvise scenes with hidden motives
 - A narrator occasionally chimes in with dramatic flair
