@@ -23,13 +23,7 @@ def display_sidebar() -> None:
         # Add Reset Play button at the top of sidebar
         if st.button("Reset Play"):
             st.session_state.play_manager.cleanup()
-            st.session_state.update({
-                'started': False,
-                'info_saved': False,
-                'messages': [],
-                'scene_description': None,
-                'show_custom_form': False
-            })
+            st.session_state.clear()
             st.rerun()
             
         st.subheader("Characters in Scene")
