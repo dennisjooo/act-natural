@@ -7,15 +7,10 @@ from typing import Dict, Optional, Generator
 from agents.character import Character
 from agents.narrator import Narrator
 from agents.orchestrator import Orchestrator
-from agents.prompts import (
-    SCENARIO_GENERATION_PROMPT,
-    CHARACTER_GENERATION_PROMPT
-)
+from agents.character_generator import CharacterGenerator
+from agents.scenario_generator import ScenarioGenerator
 from agents.response_processor import ResponseProcessor
-from config.character_config import CharacterConfig
 from config.play_config import PlayConfig
-from utils import clean_json_response
-
 class PlayManager:
     """Manages the interactive play experience including characters, narration and orchestration.
     
@@ -71,6 +66,10 @@ class PlayManager:
         self.character_context: str = ""
         self.user_role: str = ""
         
+        # Initialize generators
+        self.character_generator = CharacterGenerator(self.llm)
+        self.scenario_generator = ScenarioGenerator(self.llm)
+    
     def _initialize_llm(self) -> ChatGroq:
         """Initialize and configure the language model instance.
         
@@ -111,101 +110,13 @@ class PlayManager:
         3. Creates CharacterConfig instances for each character
         4. Instantiates Character objects and adds them to self.characters
         """
-        try:
-            # Include character context in the scene description if available
-            full_description = scene_description
-            if hasattr(self, 'character_context') and self.character_context:
-                full_description = f"{scene_description}\n\nExpected characters: {self.character_context}"
-            
-            chain = CHARACTER_GENERATION_PROMPT | self.llm
-            response = chain.invoke({
-                "scene_description": full_description,
-                "num_characters": num_characters,
-                "user_name": self.user_name,
-                "user_description": self.user_description
-            }).content.strip()
-            
-            # Use the new clean_json_response function
-            char_data = clean_json_response(response)
-            if not char_data:
-                logging.error("Failed to parse character data, using fallback characters")
-                self.generate_fallback_characters()
-                return
-            
-            # Create characters using CharacterConfig
-            for char in char_data["characters"]:
-                config = CharacterConfig(
-                    name=char["name"],
-                    gender=char.get("gender", "non-binary"),
-                    description=char.get("description", ""),
-                    personality=char["personality"],
-                    background=char["background"],
-                    hidden_motive=char["hidden_motive"],
-                    emoji=char.get("emoji", "👤"),
-                    role_in_scene=char.get("role_in_scene", "")
-                )
-                self.characters[char["name"]] = Character(config)
-                logging.info(f"Generated character: {char['name']}, {char.get('emoji', '👤')}")
-                
-        except Exception as e:
-            logging.error(f"Error during character generation: {e}")
-            self.generate_fallback_characters()
-    
-    def generate_fallback_characters(self) -> None:
-        """Create a set of default characters when generation fails.
-        
-        Instantiates a predefined set of fallback characters with fixed attributes
-        when the dynamic character generation process encounters an error.
-        
-        Side Effects:
-            Populates self.characters with predefined Character instances
-            
-        The fallback characters include:
-        - Adventurer: A brave explorer seeking treasures
-        - Scholar: An intelligent researcher studying ruins
-        - Guide: A mysterious local expert
-        
-        Each character has predefined:
-        - Name, gender, description
-        - Personality traits
-        - Background story
-        - Hidden motives
-        - Visual emoji representation
-        """
-        fallback_chars = {
-            "Adventurer": CharacterConfig(
-                name="Adventurer",
-                gender="male",
-                description="A rugged individual with weathered features and well-worn traveling clothes",
-                personality={"bravery": 0.8, "curiosity": 0.9},
-                background="A seasoned explorer seeking ancient treasures",
-                hidden_motive="Searching for a legendary artifact that could save their homeland",
-                emoji="🗺️"
-            ),
-            "Scholar": CharacterConfig(
-                name="Scholar",
-                gender="female",
-                description="A sharp-eyed woman in scholarly robes with wire-rimmed spectacles",
-                personality={"intelligence": 0.9, "caution": 0.7},
-                background="A knowledgeable researcher of ancient ruins",
-                hidden_motive="Secretly working for a mysterious organization",
-                emoji="📚"
-            ),
-            "Guide": CharacterConfig(
-                name="Guide",
-                gender="non-binary",
-                description="A mysterious figure in local garb with keen eyes and quiet demeanor",
-                personality={"wisdom": 0.8, "mystery": 0.6},
-                background="A local expert with deep knowledge of the area",
-                hidden_motive="Protecting an ancient secret about the location",
-                emoji="🧭"
-            )
-        }
-        
-        self.characters = {
-            name: Character(config)
-            for name, config in fallback_chars.items()
-        }
+        self.characters = self.character_generator.generate_characters(
+            scene_description,
+            self.character_context,
+            self.user_name,
+            self.user_description,
+            num_characters
+        )
     
     def generate_scenario(self) -> str:
         """Generate a random scenario for the interactive play.
@@ -226,58 +137,10 @@ class PlayManager:
         3. Combines elements into cohesive description
         4. Falls back to predefined scenarios if generation fails
         """
-        try:
-            chain = SCENARIO_GENERATION_PROMPT | self.llm
-            response = chain.invoke({
-                "user_name": self.user_name,
-                "user_description": self.user_description
-            }).content
-            
-            scenario_data = clean_json_response(response)
-            if not scenario_data:
-                logging.error("Failed to parse scenario data, using fallback scenario")
-                return self.get_fallback_scenario()
-            
-            # Store character context and user role for later use
-            self.character_context = scenario_data.get('character_context', '')
-            self.user_role = scenario_data.get('user_role', '')
-            
-            return (
-                f"{scenario_data['setting']}. "
-                f"{scenario_data['situation']} "
-                f"{scenario_data['atmosphere']}\n\n"
-                f"Your role: {self.user_role}"
-            )
-        except Exception as e:
-            logging.error(f"Error generating scenario: {e}")
-            return self.get_fallback_scenario()
-    
-    def get_fallback_scenario(self) -> str:
-        """Provide a pre-written scenario when generation fails.
-        
-        Returns a randomly selected predefined scenario description when
-        the dynamic scenario generation encounters an error.
-        
-        Returns:
-            str: Complete description of a predefined scenario
-            
-        The fallback scenarios include:
-        - A mysterious tavern during a storm
-        - An abandoned mansion during a masquerade
-        - A malfunctioning space station
-        
-        Each scenario provides:
-        - Physical setting
-        - Current situation
-        - Atmospheric elements
-        - Character dynamics
-        """
-        fallback_scenarios = [
-            "A mysterious tavern on a stormy night. Travelers from different walks of life have sought shelter here, each carrying their own secrets and stories. The atmosphere is tense with unspoken tales and hidden agendas.",
-            "An abandoned mansion during a masquerade ball. The guests are trapped inside by a mysterious force, and everyone seems to have a hidden agenda. The air is thick with intrigue and suspicion.",
-            "A futuristic space station at the edge of known space. The station's systems are malfunctioning, and the diverse crew members each seem to know more than they're letting on. The metallic corridors echo with whispered conspiracies."
-        ]
-        return random.choice(fallback_scenarios)
+        scenario_description, self.character_context, self.user_role = (
+            self.scenario_generator.generate_scenario(self.user_name, self.user_description)
+        )
+        return scenario_description
     
     def start_play(self, scene_description: str, num_characters: Optional[int] = None, 
                    user_name: Optional[str] = None, user_description: Optional[str] = None) -> str:
