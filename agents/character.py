@@ -1,3 +1,4 @@
+import logging
 import os
 from langchain_groq import ChatGroq
 from typing import Dict, Optional, Any
@@ -31,7 +32,7 @@ class Character:
                 including name, personality traits, background story, and hidden motives
         """
         self.config = config
-        self.memory = MemoryManager()
+        self.memory = MemoryManager(max_memories=10)
         self.thoughts_queue = None
         self.llm = self._initialize_llm()
         self.chain = CHARACTER_RESPONSE_PROMPT | self.llm
@@ -183,9 +184,9 @@ class Character:
         try:
             # Handle special message types
             if message == "SCENE_START":
-                print(f"Character {self.name} generating initial scene response...")
+                logging.info(f"Character {self.name} generating initial scene response...")
             elif message == "prompt_user":
-                print(f"Character {self.name} generating user prompt...")
+                logging.info(f"Character {self.name} generating user prompt...")
             
             response = self.chain.invoke({
                 "name": self.name,
@@ -225,7 +226,7 @@ class Character:
             return f"[{self.name}]: {response_text}"
             
         except Exception as e:
-            print(f"Error generating character response: {e}")
+            logging.error(f"Error generating character response: {e}")
             if message == "SCENE_START":
                 return f"[{self.name}]: (enters the scene, looking around with interest)"
             if message == "prompt_user":

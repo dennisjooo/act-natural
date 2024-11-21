@@ -1,3 +1,4 @@
+import logging
 import time
 import streamlit as st
 from dotenv import load_dotenv
@@ -8,6 +9,8 @@ from ui import *
 from ui.scenario_setup import display_scenario_buttons
 
 load_dotenv()
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def init_session_state() -> None:
     """Initialize session state variables"""

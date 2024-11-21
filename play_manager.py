@@ -1,3 +1,4 @@
+import logging
 import os
 import random
 from langchain_groq import ChatGroq
@@ -127,7 +128,7 @@ class PlayManager:
             # Use the new clean_json_response function
             char_data = clean_json_response(response)
             if not char_data:
-                print("Failed to parse character data, using fallback characters")
+                logging.error("Failed to parse character data, using fallback characters")
                 self.generate_fallback_characters()
                 return
             
@@ -144,10 +145,10 @@ class PlayManager:
                     role_in_scene=char.get("role_in_scene", "")
                 )
                 self.characters[char["name"]] = Character(config)
-                print(f"Generated character: {char['name']}, {char.get('emoji', '👤')}")
+                logging.info(f"Generated character: {char['name']}, {char.get('emoji', '👤')}")
                 
         except Exception as e:
-            print(f"Error during character generation: {e}")
+            logging.error(f"Error during character generation: {e}")
             self.generate_fallback_characters()
     
     def generate_fallback_characters(self) -> None:
@@ -234,7 +235,7 @@ class PlayManager:
             
             scenario_data = clean_json_response(response)
             if not scenario_data:
-                print("Failed to parse scenario data, using fallback scenario")
+                logging.error("Failed to parse scenario data, using fallback scenario")
                 return self.get_fallback_scenario()
             
             # Store character context and user role for later use
@@ -248,7 +249,7 @@ class PlayManager:
                 f"Your role: {self.user_role}"
             )
         except Exception as e:
-            print(f"Error generating scenario: {e}")
+            logging.error(f"Error generating scenario: {e}")
             return self.get_fallback_scenario()
     
     def get_fallback_scenario(self) -> str:
@@ -318,7 +319,14 @@ class PlayManager:
         # Generate characters with updated user info
         self.generate_characters(scene_description, num_characters)
         self.orchestrator = Orchestrator(self.characters, self.narrator)
+        
+        # Log the scene and narrator information
+        self.orchestrator.game_log.log_event("narrator_setup", {
+            "scene_description": scene_description,
+            "narrator_type": type(self.narrator).__name__
+        })
         self.orchestrator.game_log.set_scene(scene_description)
+        
         self.response_processor = ResponseProcessor(self.characters, self.narrator)
         
         # Set user info for each character
@@ -327,6 +335,13 @@ class PlayManager:
             char.set_user_info(self.user_name, self.user_description)
         
         opening = self.narrator.set_scene(scene_description)
+        
+        # Log the narrator's opening statement
+        self.orchestrator.game_log.log_event("narration", {
+            "type": "opening",
+            "content": opening
+        })
+        
         return f"{opening}\n\nThe scene is set. You may begin interacting..."
     
     def process_input(self, user_input: str) -> Generator[str, None, None]:
@@ -383,6 +398,11 @@ class PlayManager:
         
         # Handle reactions
         yield from self._process_reactions(next_speaker, char_response)
+        
+        # If narrator provides any observations
+        if narrator_observation := self.narrator.get_observation():
+            self._log_narrator_event("observation", narrator_observation)
+            yield narrator_observation
     
     def _process_reactions(self, primary_speaker: str, primary_response: str) -> Generator[str, None, None]:
         """Process reactions from other characters to maintain engagement.
@@ -480,3 +500,16 @@ class PlayManager:
         """
         if self.orchestrator:
             self.orchestrator.executor.shutdown()
+    
+    def _log_narrator_event(self, event_type: str, content: str) -> None:
+        """Log narrator events to the game log.
+        
+        Args:
+            event_type (str): Type of narrator event (e.g., 'scene_description', 'observation')
+            content (str): The actual narration content
+        """
+        if self.orchestrator:
+            self.orchestrator.game_log.log_event("narration", {
+                "type": event_type,
+                "content": content
+            })

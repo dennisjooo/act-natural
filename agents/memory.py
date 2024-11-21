@@ -1,28 +1,23 @@
+import os
 from collections import deque
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Union, List
+from langchain_core.messages import HumanMessage, AIMessage, trim_messages
 
 @dataclass
 class MemoryEvent:
-    """Represents a single memory event containing a conversation interaction.
-    
-    Attributes:
-        speaker: The name of the character speaking
-        message: The message that was spoken
-        response: The response given to the message
-        hidden_thought: Optional internal thought of the character
-    """
+    """Represents a single memory event containing a conversation interaction."""
     speaker: str
     message: str 
     response: str
     hidden_thought: Optional[str]
+    
+    def __str__(self) -> str:
+        """String representation of the memory event."""
+        return f"{self.speaker}: {self.message} -> {self.response}"
 
 class MemoryManager:
-    """Manages a character's memory of recent conversations and interactions.
-    
-    Maintains a fixed-size deque of MemoryEvent objects representing the most
-    recent memories.
-    """
+    """Manages a character's memory of recent conversations and interactions."""
     
     def __init__(self, max_memories: int = 10) -> None:
         """Initialize the MemoryManager.
@@ -31,23 +26,36 @@ class MemoryManager:
             max_memories: Maximum number of memories to store. Defaults to 10.
         """
         self.memories: deque[MemoryEvent] = deque(maxlen=max_memories)
+        self.message_history: List[Union[HumanMessage, AIMessage]] = []
     
     def add_memory(self, event: MemoryEvent) -> None:
-        """Add a new memory event to the memory store.
-        
-        Args:
-            event: The MemoryEvent to add
-        """
+        """Add a new memory event to the memory store."""
         self.memories.append(event)
+        self.message_history.extend([
+            HumanMessage(content=event.message),
+            AIMessage(content=event.response)
+        ])
+        # Keep message history in sync with deque size
+        self.message_history = trim_messages(
+            self.message_history,
+            max_tokens=self.memories.maxlen * 2,  # *2 because each exchange has 2 messages
+            token_counter=len,  # Simple message counting
+            strategy="last",
+            start_on="human"
+        )
     
-    def get_recent_memories(self, count: int = 3) -> str:
-        """Get a string representation of the most recent memories.
+    def get_recent_memories(self, count: int = 3, as_messages: bool = False) -> Union[str, dict]:
+        """Get a representation of the most recent memories.
         
         Args:
             count: Number of recent memories to retrieve. Defaults to 3.
+            as_messages: Whether to return as langchain messages. Defaults to False.
             
         Returns:
-            A string containing the formatted recent memories, one per line.
+            Either a string of formatted memories or dict with message history.
         """
+        if as_messages:
+            return {"chat_history": self.message_history[-count*2:]}  # *2 for message pairs
+            
         recent = list(self.memories)[-count:]
         return "\n".join(str(memory) for memory in recent)

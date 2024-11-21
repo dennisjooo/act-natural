@@ -11,7 +11,7 @@ or context. Try and match the tone of the scene. Only provide narration if any o
 Current scene: {current_scene} 
 Interaction: {speaker} says to {listener}: "{message}"
 
-If narration is needed, provide a brief, atmospheric description (1-3 sentences). 
+If narration is needed, provide a brief, atmospheric description (2-3 sentences). 
 If no narration is needed, respond with "SKIP". 
 
 Response:

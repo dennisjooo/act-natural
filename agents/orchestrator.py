@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import random
 import time
@@ -277,7 +278,7 @@ class Orchestrator:
                             
                 time.sleep(1)
             except Exception as e:
-                print(f"Error preloading thoughts: {e}")
+                logging.error(f"Error preloading thoughts: {e}")
                 time.sleep(5)
     
     def _generate_hidden_thought(self, character: Any) -> Optional[str]:
@@ -310,7 +311,7 @@ class Orchestrator:
             return response
             
         except Exception as e:
-            print(f"Error generating thought: {e}")
+            logging.error(f"Error generating thought: {e}")
             return None
     
     def _format_character_traits(self, character: Any) -> str:
@@ -400,8 +401,8 @@ class Orchestrator:
             return response
             
         except Exception as e:
-            print(f"Error cleaning JSON response: {e}")
-            print(f"Original response: {response}")
+            logging.error(f"Error cleaning JSON response: {e}")
+            logging.error(f"Original response: {response}")
             raise
     
     def _parse_flow_response(self, response: str) -> Dict[str, str]:
@@ -423,7 +424,7 @@ class Orchestrator:
                 raise ValueError("Missing required keys in response")
             return result
         except (json.JSONDecodeError, ValueError) as e:
-            print(f"Error parsing flow response: {e}")
+            logging.error(f"Error parsing flow response: {e}")
             raise
     
     def _update_conversation_history(self, speaker: str, target: str, message: str) -> None:
@@ -488,7 +489,7 @@ class Orchestrator:
                 context
             )
         except Exception as e:
-            print(f"Error processing character response: {e}")
+            logging.error(f"Error processing character response: {e}")
     
     def _check_similar_topics(self, msg1: str, msg2: str) -> bool:
         """Check if two messages discuss similar topics.
@@ -615,7 +616,7 @@ class Orchestrator:
             return next_speaker, target, reasoning
             
         except Exception as e:
-            print(f"Error in orchestrator: {e}")
+            logging.error(f"Error in orchestrator: {e}")
             return self._get_fallback_interaction(last_speaker)
     
     def get_initial_character_response(self) -> str:
@@ -641,5 +642,5 @@ class Orchestrator:
             return response
             
         except Exception as e:
-            print(f"Error generating initial response: {e}")
+            logging.error(f"Error generating initial response: {e}")
             return f"[{list(self.characters.keys())[0]}]: *looks around curiously*"

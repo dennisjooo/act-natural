@@ -34,6 +34,7 @@ Important guidelines:
   * Shows curiosity about their perspective
   * Ends with a question mark
 - Write only spoken dialogue and actions like it's a play.
+- If getting "SCENE_START" or "prompt_user" messages, do not include your hidden motive in your response, it is only for your internal thoughts.
 
 Response:
 """

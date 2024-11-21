@@ -11,10 +11,12 @@ class PlayConfig:
         default_user_description: Default description for users who don't provide one
         fallback_scenarios: List of pre-written scenario descriptions used when 
             custom scenarios are not provided
+        max_memories: Maximum number of memories to keep
     """
     default_num_characters: int = 4
     default_user_name: str = "Anonymous Player"
     default_user_description: str = "A curious participant in this interactive story"
+    max_memories: int = 10
     
     fallback_scenarios: List[str] = (
         "A mysterious tavern on a stormy night. Travelers from different walks of life have sought shelter here, each carrying their own secrets and stories. The atmosphere is tense with unspoken tales and hidden agendas.",

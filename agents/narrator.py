@@ -1,3 +1,4 @@
+import logging
 import os
 from dataclasses import dataclass
 from enum import Enum
@@ -108,5 +109,30 @@ class Narrator:
             return self._format_narrator_message(observation)
             
         except Exception as e:
-            print(f"Error in narrator observation: {e}")
+            logging.error(f"Error in narrator observation: {e}")
             return ""
+    
+    def get_observation(self) -> str:
+        """Generate an observation based on the last interaction in the scene history.
+        
+        Returns:
+            str: Observation string or empty if no observation is needed
+        """
+        if not self.scene_history:
+            return ""
+        
+        # Get the last interaction event
+        last_event = self.scene_history[-1]
+        
+        # Check if the last event was an observation
+        if last_event.type == EventType.OBSERVATION:
+            return ""
+        
+        # Attempt to split the description into speaker, listener, and message
+        try:
+            speaker, listener, message = last_event.description.split(" to ", 2)
+        except ValueError:
+            logging.error(f"Unexpected format in scene event description: {last_event.description}")
+            return ""
+        
+        return self.observe_interaction(speaker, listener, message)
