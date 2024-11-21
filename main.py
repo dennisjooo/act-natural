@@ -2,11 +2,10 @@ import logging
 import time
 import streamlit as st
 from dotenv import load_dotenv
-from play_manager import PlayManager
+from src.backend import PlayManager
 from typing import List, Tuple, Generator
 
-from ui import *
-from ui.scenario_setup import display_scenario_buttons
+from src.frontend import *
 
 load_dotenv()
 
@@ -83,6 +82,6 @@ def main() -> None:
         with st.sidebar.expander("Debug Information"):
             for error in st.session_state.error_log:
                 st.write(error)
-
+                
 if __name__ == "__main__":
     main()

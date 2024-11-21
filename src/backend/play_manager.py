@@ -3,14 +3,9 @@ import random
 from langchain_groq import ChatGroq
 from typing import Dict, Optional, Generator
 
-from agents.character import Character
-from agents.narrator import Narrator
-from agents.orchestrator import Orchestrator
-from agents.character_generator import CharacterGenerator
-from agents.scenario_generator import ScenarioGenerator
-from agents.response_processor import ResponseProcessor
-from config.play_config import PlayConfig
-from agents.game_log import GameLog
+from .agents import Character, Narrator, Orchestrator, ResponseProcessor, GameLog
+from .generator import ScenarioGenerator, CharacterGenerator
+from .schema import PlayConfig
 
 class PlayManager:
     """Manages the interactive play experience including characters, narration and orchestration.
@@ -324,7 +319,8 @@ class PlayManager:
         yield prompt_response  # Make sure we're yielding the prompt
         self.orchestrator._update_conversation_history(prompt_char, "User", prompt_response)
         
-    def _process_followup(self, speaker: str, target: str, previous_response: str) -> Generator[str, None, None]:
+    def _process_followup(self, speaker: str, target: str, 
+                          previous_response: str) -> Generator[str, None, None]:
         """Process follow-up responses between characters.
         
         Generates and handles follow-up interactions between characters to create

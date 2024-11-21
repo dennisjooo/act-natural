@@ -2,8 +2,8 @@ import logging
 import random
 from langchain_groq import ChatGroq
 
-from agents.prompts import SCENARIO_GENERATION_PROMPT
-from utils import clean_json_response
+from ..agents.prompts import SCENARIO_GENERATION_PROMPT
+from ..utils import clean_json_response
 
 class ScenarioGenerator:
     """Generates interactive scenarios with rich descriptions and character contexts.

@@ -1,27 +1,11 @@
 import logging
 import os
-from dataclasses import dataclass
-from enum import Enum
 from langchain_groq import ChatGroq
 from typing import List, Optional
 
 from .prompts import NARRATOR_OBSERVATION_PROMPT
+from ..schema import SceneEvent, EventType
 
-class EventType(Enum):
-    """Types of narrative events that can occur."""
-    SCENE = 'scene'
-    OBSERVATION = 'observation'
-
-@dataclass
-class SceneEvent:
-    """Represents a narrative event in the scene history.
-    
-    Attributes:
-        description: The narrative description of the event
-        type: The type of event (scene or observation)
-    """
-    description: str
-    type: EventType
 
 class Narrator:
     """Manages scene narration and observes character interactions.
@@ -44,7 +28,7 @@ class Narrator:
         """
         return ChatGroq(
             api_key=os.getenv("GROQ_API_KEY"),
-            model_name="gemma2-9b-it"
+            model_name=os.getenv("ORCHESTRATOR_MODEL")
         )
 
     def _format_narrator_message(self, message: str) -> str:

@@ -1,19 +1,8 @@
 from collections import deque
-from dataclasses import dataclass
-from typing import Optional, Union, List
+from typing import Union, List
 from langchain_core.messages import HumanMessage, AIMessage, trim_messages
 
-@dataclass
-class MemoryEvent:
-    """Represents a single memory event containing a conversation interaction."""
-    speaker: str
-    message: str 
-    response: str
-    hidden_thought: Optional[str]
-    
-    def __str__(self) -> str:
-        """String representation of the memory event."""
-        return f"{self.speaker}: {self.message} -> {self.response}"
+from ..schema import MemoryEvent
 
 class MemoryManager:
     """Manages a character's memory of recent conversations and interactions."""

@@ -1,7 +1,8 @@
 import random
 from typing import Generator, Dict
-from agents.character import Character
-from agents.narrator import Narrator
+
+from .character import Character
+from .narrator import Narrator
 
 class ResponseProcessor:
     """Processes and formats character responses and generates narration.

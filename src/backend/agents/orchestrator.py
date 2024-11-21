@@ -5,8 +5,6 @@ import random
 import time
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
-from enum import Enum
 from langchain_groq import ChatGroq
 from typing import Dict, Tuple, Optional, List, Any
 from queue import Queue
@@ -15,27 +13,8 @@ from .prompts import (
     ORCHESTRATOR_FLOW_PROMPT,
     CHARACTER_THOUGHT_PROMPT
 )
+from ..schema import ConversationEvent
 
-class SpeakerType(Enum):
-    """Types of speakers in the conversation system."""
-    USER = "user"
-    CHARACTER = "character" 
-    ALL = "all"
-
-@dataclass
-class ConversationEvent:
-    """Represents a single conversation interaction between characters.
-    
-    Attributes:
-        speaker (str): The name of the character speaking
-        target (str): The name of the character being spoken to 
-        message (str): The content of the message
-        timestamp (float): Unix timestamp of when the message was sent
-    """
-    speaker: str
-    target: str 
-    message: str
-    timestamp: float = time.time()
 
 class ConversationFlow:
     """Handles the logic for determining conversation flow and turn-taking.

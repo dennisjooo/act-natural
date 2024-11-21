@@ -2,10 +2,9 @@ import logging
 from typing import Dict
 from langchain_groq import ChatGroq
 
-from agents.character import Character
-from agents.prompts import CHARACTER_GENERATION_PROMPT
-from config.character_config import CharacterConfig
-from utils import clean_json_response
+from ..agents import Character, CHARACTER_GENERATION_PROMPT
+from ..schema import CharacterConfig
+from ..utils import clean_json_response
 
 class CharacterGenerator:
     """Generates character sets for interactive scenarios.
