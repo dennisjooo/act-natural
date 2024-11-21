@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Optional
+from typing import Dict
 from langchain_groq import ChatGroq
 
 from agents.character import Character
