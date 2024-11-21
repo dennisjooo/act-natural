@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 import random
@@ -9,57 +8,60 @@ from langchain_groq import ChatGroq
 from typing import Dict, Tuple, Optional, List, Any
 from queue import Queue
 
-from .prompts import (
-    ORCHESTRATOR_FLOW_PROMPT,
-    CHARACTER_THOUGHT_PROMPT
-)
-from ..schema import ConversationEvent
-
+from .conversation_analyzer import ConversationAnalyzer
+from .prompts import ORCHESTRATOR_FLOW_PROMPT, CHARACTER_THOUGHT_PROMPT
+from ..schema import ConversationEvent, FlowConfig, OrchestratorConfig
 
 class ConversationFlow:
     """Handles the logic for determining conversation flow and turn-taking.
     
-    Manages conversation dynamics including idle time thresholds, initiation chances,
-    and response probabilities between characters and users.
+    This class manages the flow of conversation between characters and users,
+    determining who should speak next based on conversation context and timing.
+    
+    Attributes:
+        characters (Dict[str, Any]): Dictionary of character objects
+        last_user_interaction (float): Timestamp of last user interaction
+        config (FlowConfig): Configuration settings for conversation flow
+        analyzer (ConversationAnalyzer): Utility for analyzing conversation content
     """
     
-    def __init__(self, characters: Dict[str, Any]):
+    def __init__(self, characters: Dict[str, Any], config: Optional[FlowConfig] = None):
         """Initialize the ConversationFlow manager.
         
         Args:
-            characters: Dictionary mapping character names to Character objects
+            characters: Dictionary mapping character names to character objects
+            config: Optional configuration settings, uses defaults if not provided
         """
         self.characters = characters
         self.last_user_interaction: float = time.time()
-        
-        # Configuration constants
-        self.IDLE_TIME_THRESHOLD = 45  # seconds before characters initiate
-        self.INITIATION_CHANCE = 0.2   # 20% chance to initiate
-        self.USER_RESPONSE_CHANCE = 0.9  # 90% chance to wait for user after question
-        self.DIRECT_RESPONSE_CHANCE = 0.9  # 90% chance to respond when directly addressed
+        self.config = config or FlowConfig()
+        self.analyzer = ConversationAnalyzer()
         
     def should_initiate_conversation(self) -> bool:
-        """Determine if a character should initiate a new conversation thread.
+        """Determine if a character should initiate conversation.
         
         Returns:
-            bool: True if conditions are met for character initiation
+            bool: True if enough idle time has passed and random chance succeeds
         """
         time_since_user = time.time() - self.last_user_interaction
         return (
-            time_since_user > self.IDLE_TIME_THRESHOLD and
-            random.random() < self.INITIATION_CHANCE
+            time_since_user > self.config.idle_time_threshold and
+            random.random() < self.config.initiation_chance
         )
     
     def get_next_speaker(self, last_event: Optional[ConversationEvent], 
                         active_characters: List[str]) -> Tuple[str, str, str]:
-        """Determine who should speak next based on conversation context.
+        """Determine who should speak next in the conversation.
         
         Args:
             last_event: The most recent conversation event, if any
             active_characters: List of characters eligible to speak
             
         Returns:
-            Tuple[str, str, str]: (next_speaker, target, reasoning)
+            Tuple containing:
+                - Name of next speaker
+                - Name of target/recipient
+                - Reasoning for the selection
         """
         if not last_event:
             return self._get_initial_speaker(active_characters)
@@ -79,7 +81,10 @@ class ConversationFlow:
             active_characters: List of characters eligible to speak
             
         Returns:
-            Tuple[str, str, str]: (initial_speaker, target, reasoning)
+            Tuple containing:
+                - Name of initial speaker
+                - Target audience ("ALL")
+                - Reasoning for selection
         """
         if not active_characters:
             return "user", "ALL", "Waiting for initial user input"
@@ -97,8 +102,8 @@ class ConversationFlow:
         """
         # Wait if the last message was a question to the user
         if (last_event.target.lower() == "user" and 
-            self._is_question(last_event.message) and 
-            random.random() < self.USER_RESPONSE_CHANCE):
+            self.analyzer.is_question(last_event.message) and 
+            random.random() < self.config.user_response_chance):
             return True
         return False
 
@@ -112,7 +117,7 @@ class ConversationFlow:
             bool: True if the last event was a direct address to a character
         """
         return (last_event.target in self.characters and 
-                random.random() < self.DIRECT_RESPONSE_CHANCE)
+                random.random() < self.config.direct_response_chance)
 
     def _get_default_next_speaker(self, last_event: ConversationEvent, 
                                 active_characters: List[str]) -> Tuple[str, str, str]:
@@ -123,7 +128,10 @@ class ConversationFlow:
             active_characters: List of characters eligible to speak
             
         Returns:
-            Tuple[str, str, str]: (next_speaker, target, reasoning)
+            Tuple containing:
+                - Name of next speaker
+                - Target recipient
+                - Reasoning for selection
         """
         if not active_characters:
             return "user", "ALL", "Waiting for user input"
@@ -135,39 +143,162 @@ class ConversationFlow:
             
         return "user", last_event.speaker, "Continuing conversation"
 
-    def _is_question(self, message: str) -> bool:
-        """Check if a message is a question.
+class ThoughtManager:
+    """Manages background thought generation for characters.
+    
+    This class handles the asynchronous generation and queuing of character thoughts
+    to provide more natural and dynamic character behaviors.
+    
+    Attributes:
+        characters (Dict[str, Any]): Dictionary of character objects
+        llm (ChatGroq): Language model for generating thoughts
+        narrator (Any): Narrator object for scene context
+        game_log (Any): Logger for game events
+        config (OrchestratorConfig): Configuration settings
+        thoughts_queue (Queue): Queue for storing generated thoughts
+        thoughts_thread (threading.Thread): Background thread for thought generation
+        conversation_history (List[ConversationEvent]): Recent conversation events
+    """
+    
+    def __init__(self, characters: Dict[str, Any], llm: ChatGroq, 
+                 narrator: Any, game_log: Any, config: OrchestratorConfig):
+        """Initialize the ThoughtManager.
         
         Args:
-            message: The message content to check
+            characters: Dictionary mapping character names to character objects
+            llm: Language model for generating thoughts
+            narrator: Narrator object for scene context
+            game_log: Logger for game events
+            config: Configuration settings for the orchestrator
+        """
+        self.characters = characters
+        self.llm = llm
+        self.narrator = narrator
+        self.game_log = game_log
+        self.config = config
+        self.thoughts_queue: Queue = Queue()
+        self.thoughts_thread = None
+        self.conversation_history: List[ConversationEvent] = []
+        self._start_thoughts_thread()
+
+    def _start_thoughts_thread(self) -> None:
+        """Start background thread for preloading character thoughts."""
+        self.thoughts_thread = threading.Thread(
+            target=self._preload_thoughts,
+            daemon=True
+        )
+        self.thoughts_thread.start()
+
+    def _preload_thoughts(self) -> None:
+        """Continuously generate and queue character thoughts in background."""
+        while True:
+            try:
+                max_queue_size = len(self.characters) * self.config.thought_queue_multiplier
+                current_size = self.thoughts_queue.qsize()
+                
+                if current_size < max_queue_size:
+                    char_thought_counts = {char_name: 0 for char_name in self.characters}
+                    
+                    # Count existing thoughts
+                    for _ in range(current_size):
+                        char_name, thought = self.thoughts_queue.get()
+                        char_thought_counts[char_name] += 1
+                        self.thoughts_queue.put((char_name, thought))
+                    
+                    # Generate thoughts for characters with fewer thoughts
+                    for char_name, count in char_thought_counts.items():
+                        if count < self.config.thought_queue_multiplier:
+                            char = self.characters[char_name]
+                            thought = self._generate_hidden_thought(char)
+                            if thought:
+                                self.thoughts_queue.put((char_name, thought))
+                            
+                time.sleep(1)
+            except Exception as e:
+                logging.error(f"Error preloading thoughts: {e}")
+                time.sleep(5)
+
+    def _generate_hidden_thought(self, character: Any) -> Optional[str]:
+        """Generate a hidden thought for a character.
+        
+        Args:
+            character: Character object to generate thought for
             
         Returns:
-            bool: True if the message appears to be a question
+            str: Generated thought text, or None if generation fails
         """
-        question_indicators = [
-            "?", "what", "how", "why", "where", "when", "who", "which",
-            "could you", "would you", "will you", "can you", "do you"
-        ]
-        message_lower = message.lower()
-        return any(indicator in message_lower for indicator in question_indicators)
+        try:
+            chain = CHARACTER_THOUGHT_PROMPT | self.llm
+            
+            # Format recent history
+            recent_history = "\n".join([
+                f"{event.speaker} to {event.target}: {event.message}"
+                for event in self.conversation_history[-2:]  # Get last 2 messages
+            ])
+
+            response = chain.invoke({
+                "name": character.config.name,
+                "personality": self._format_character_traits(character),
+                "motive": character.config.hidden_motive,
+                "scene": self.narrator.current_scene,
+                "history": recent_history  # Add this line
+            }).content.strip()
+
+            if response:
+                self.game_log.log_event("hidden_thought", {
+                    "character": character.config.name,
+                    "thought": response
+                })
+            return response
+            
+        except Exception as e:
+            logging.error(f"Error generating thought: {e}")
+            return None
+
+    def _format_character_traits(self, character: Any) -> str:
+        """Format character traits for prompts.
+        
+        Args:
+            character: Character object containing personality traits
+            
+        Returns:
+            str: Formatted string of personality traits and values
+        """
+        return ", ".join([
+            f"{k}: {v:.1f}" 
+            for k, v in character.config.personality.items()
+        ])
 
 class Orchestrator:
     """Manages conversation flow and character interactions.
     
-    Coordinates character responses, maintains conversation history, and manages
-    background thought generation for characters.
-    """
-    MAX_HISTORY_LENGTH = 10
-    THOUGHT_QUEUE_MULTIPLIER = 2
+    This class coordinates the overall flow of conversation, character responses,
+    and thought generation in the interactive story.
     
-    def __init__(self, characters: Dict[str, Any], narrator: Any, game_log: Any) -> None:
+    Attributes:
+        config (OrchestratorConfig): Configuration settings
+        characters (Dict[str, Any]): Dictionary of character objects
+        narrator (Any): Narrator object for scene context
+        game_log (Any): Logger for game events
+        llm (ChatGroq): Language model for generating responses
+        chain: Prompt chain for orchestrating flow
+        conversation_history (List[ConversationEvent]): Recent conversation events
+        flow_manager (ConversationFlow): Manager for conversation flow
+        thought_manager (ThoughtManager): Manager for character thoughts
+        executor (ThreadPoolExecutor): Thread pool for processing responses
+    """
+    
+    def __init__(self, characters: Dict[str, Any], narrator: Any, game_log: Any,
+                 config: Optional[OrchestratorConfig] = None) -> None:
         """Initialize the Orchestrator.
         
         Args:
-            characters: Dictionary mapping character names to Character objects
-            narrator: Narrator instance for scene management
-            game_log: GameLog instance for logging events
+            characters: Dictionary mapping character names to character objects
+            narrator: Narrator object for scene context
+            game_log: Logger for game events
+            config: Optional configuration settings
         """
+        self.config = config or OrchestratorConfig()
         self.characters = characters
         self.narrator = narrator
         self.game_log = game_log
@@ -175,14 +306,13 @@ class Orchestrator:
         self.chain = ORCHESTRATOR_FLOW_PROMPT | self.llm
         self.conversation_history: List[ConversationEvent] = []
         
-        # Initialize conversation flow manager
         self.flow_manager = ConversationFlow(characters)
+        self.thought_manager = ThoughtManager(
+            characters, self.llm, narrator, game_log, self.config
+        )
         
-        # Initialize thread pool and thought queue
         self.executor = ThreadPoolExecutor(max_workers=len(characters))
-        self.thoughts_queue: Queue = Queue()
-        self._start_thoughts_thread()
-        
+
     def _initialize_llm(self) -> ChatGroq:
         """Initialize the language model.
         
@@ -194,7 +324,7 @@ class Orchestrator:
             model_name=os.getenv("ORCHESTRATOR_MODEL"),
             temperature=0.25
         )
-    
+
     def _get_active_characters(self, exclude: Optional[List[str]] = None) -> List[str]:
         """Get list of characters who haven't spoken recently.
         
@@ -202,7 +332,7 @@ class Orchestrator:
             exclude: Optional list of character names to exclude
             
         Returns:
-            List[str]: List of character names who are eligible to speak
+            List[str]: Names of characters eligible to speak
         """
         exclude = exclude or []
         recent_speakers = {
@@ -213,242 +343,50 @@ class Orchestrator:
             name for name in self.characters.keys()
             if name not in recent_speakers and name not in exclude
         ]
-    
-    def _start_thoughts_thread(self) -> None:
-        """Start background thread for preloading character thoughts."""
-        self.thoughts_thread = threading.Thread(
-            target=self._preload_thoughts,
-            daemon=True
-        )
-        self.thoughts_thread.start()
-    
-    def _preload_thoughts(self) -> None:
-        """Continuously generate and queue character thoughts in background."""
-        while True:
-            try:
-                max_queue_size = len(self.characters) * self.THOUGHT_QUEUE_MULTIPLIER
-                current_size = self.thoughts_queue.qsize()
-                
-                # Check if we need more thoughts
-                if current_size < max_queue_size:
-                    # Count thoughts per character in queue
-                    char_thought_counts = {char_name: 0 for char_name in self.characters}
-                    
-                    # Count existing thoughts
-                    for _ in range(current_size):
-                        char_name, thought = self.thoughts_queue.get()
-                        char_thought_counts[char_name] += 1
-                        self.thoughts_queue.put((char_name, thought))
-                    
-                    # Generate thoughts for characters with fewer thoughts
-                    for char_name, count in char_thought_counts.items():
-                        if count < self.THOUGHT_QUEUE_MULTIPLIER:
-                            char = self.characters[char_name]
-                            thought = self._generate_hidden_thought(char)
-                            if thought:
-                                self.thoughts_queue.put((char_name, thought))
-                            
-                time.sleep(1)
-            except Exception as e:
-                logging.error(f"Error preloading thoughts: {e}")
-                time.sleep(5)
-    
-    def _generate_hidden_thought(self, character: Any) -> Optional[str]:
-        """Generate and log a hidden thought for a character.
-        
-        Args:
-            character: Character instance to generate thought for
-            
-        Returns:
-            Optional[str]: Generated thought string or None if generation fails
-        """
-        try:
-            chain = CHARACTER_THOUGHT_PROMPT | self.llm
-            recent_history = self._format_recent_history(2)
-            
-            response = chain.invoke({
-                "name": character.config.name,
-                "personality": self._format_character_traits(character),
-                "motive": character.config.hidden_motive,
-                "scene": self.narrator.current_scene,
-                "history": recent_history
-            }).content.strip()
 
-            # Log the thought
-            if response:
-                self.game_log.log_event("hidden_thought", {
-                    "character": character.config.name,
-                    "thought": response
-                })
-            return response
-            
-        except Exception as e:
-            logging.error(f"Error generating thought: {e}")
-            return None
-    
-    def _format_character_traits(self, character: Any) -> str:
-        """Format character traits for prompts.
-        
-        Args:
-            character: Character instance to format traits for
-            
-        Returns:
-            str: Formatted string of character traits and values
-        """
-        return ", ".join([
-            f"{k}: {v:.1f}" 
-            for k, v in character.config.personality.items()
-        ])
-    
-    def _format_recent_history(self, count: int = 3) -> str:
-        """Format recent conversation history.
-        
-        Args:
-            count: Number of recent events to include
-            
-        Returns:
-            str: Formatted string of recent conversation events
-        """
-        recent = self.conversation_history[-count:] if self.conversation_history else []
-        return "\n".join([
-            f"{event.speaker} to {event.target}: {event.message}"
-            for event in recent
-        ])
-    
-    def _get_flow_response(self, last_speaker: str, last_message: str, history: str) -> str:
-        """Get the next interaction flow from the LLM.
-        
-        Args:
-            last_speaker: Name of the most recent speaker
-            last_message: Content of the most recent message
-            history: Formatted conversation history
-            
-        Returns:
-            str: LLM response string determining next interaction
-        """
-        response = self.chain.invoke({
-            "scene": self.narrator.current_scene,
-            "characters": self.format_characters_info(),
-            "last_speaker": last_speaker,
-            "last_message": last_message,
-            "history": history
-        }).content.strip()
-        
-        return self._clean_json_response(response)
-    
-    def _clean_json_response(self, response: str) -> str:
-        """Clean LLM response to ensure valid JSON.
-        
-        Args:
-            response: Raw LLM response string
-            
-        Returns:
-            str: Cleaned JSON string
-            
-        Raises:
-            Exception: If JSON cleaning/parsing fails
-        """
-        try:
-            # Remove any markdown code blocks
-            response = response.strip()
-            if response.startswith('```json'):
-                response = response.split('```json')[1]
-            if response.startswith('```'):
-                response = response.split('```')[1]
-            if response.endswith('```'):
-                response = response.rsplit('```', 1)[0]
-            
-            # Clean up common JSON formatting issues
-            response = response.strip()
-            response = response.replace('\n', ' ')
-            response = response.replace('\\n', ' ')
-            response = response.replace('\\', '')
-            
-            # Remove any trailing commas before closing braces/brackets
-            response = response.replace(',}', '}')
-            response = response.replace(',]', ']')
-            
-            # Validate JSON structure
-            json.loads(response)  # Test if it's valid JSON
-            return response
-            
-        except Exception as e:
-            logging.error(f"Error cleaning JSON response: {e}")
-            logging.error(f"Original response: {response}")
-            raise
-    
-    def _parse_flow_response(self, response: str) -> Dict[str, str]:
-        """Parse the LLM's flow response into structured data.
-        
-        Args:
-            response: JSON response string from LLM
-            
-        Returns:
-            Dict[str, str]: Dictionary containing parsed response data
-            
-        Raises:
-            ValueError: If response is missing required keys
-        """
-        try:
-            result = json.loads(response)
-            required_keys = {"next_speaker", "target", "reasoning"}
-            if not all(key in result for key in required_keys):
-                raise ValueError("Missing required keys in response")
-            return result
-        except (json.JSONDecodeError, ValueError) as e:
-            logging.error(f"Error parsing flow response: {e}")
-            raise
-    
     def _update_conversation_history(self, speaker: str, target: str, message: str) -> None:
         """Update the conversation history and log the interaction.
         
-        Maintains a rolling window of recent conversation events and logs them to the game log.
-        
         Args:
-            speaker (str): Name of the character or user who is speaking
-            target (str): Name of the character or user being addressed 
-            message (str): The actual message content being spoken
-            
-        Side Effects:
-            - Appends new ConversationEvent to self.conversation_history
-            - Trims conversation_history if it exceeds MAX_HISTORY_LENGTH
-            - Logs the dialogue event to self.game_log
+            speaker: Name of speaking character
+            target: Name of target/recipient
+            message: Content of the message
         """
-        # Existing conversation history update
-        self.conversation_history.append(ConversationEvent(
+        event = ConversationEvent(
             speaker=speaker,
             target=target,
             message=message
-        ))
+        )
+        self.conversation_history.append(event)
         
-        # Keep only recent history
-        if len(self.conversation_history) > self.MAX_HISTORY_LENGTH:
-            self.conversation_history = self.conversation_history[-self.MAX_HISTORY_LENGTH:]
+        if len(self.conversation_history) > self.config.max_history_length:
+            self.conversation_history = self.conversation_history[-self.config.max_history_length:]
             
-        # Log the conversation event
+        # Update thought manager's conversation history
+        self.thought_manager.conversation_history = self.conversation_history
+            
         self.game_log.log_event("dialogue", {
             "speaker": speaker,
             "target": target,
             "message": message
         })
+
     def _process_character_response(self, char_name: str, message: str, target: str) -> None:
         """Process a character's response in the thread pool.
         
         Args:
-            char_name: Name of the character responding
+            char_name: Name of responding character
             message: Message being responded to
-            target: Target of the response
+            target: Target/recipient of the response
         """
         try:
-            # Check recent responses for similar topics
             recent_events = self.conversation_history[-3:] if self.conversation_history else []
             similar_topics = any(
                 event.speaker != char_name and
-                self._check_similar_topics(message, event.message)
+                ConversationAnalyzer.check_similar_topics(message, event.message)
                 for event in recent_events
             )
             
-            # If similar topics found, add context to encourage a different perspective
             context = {
                 "scene": self.narrator.current_scene,
                 "avoid_similar_response": similar_topics
@@ -462,104 +400,19 @@ class Orchestrator:
             )
         except Exception as e:
             logging.error(f"Error processing character response: {e}")
-    
-    def _check_similar_topics(self, msg1: str, msg2: str) -> bool:
-        """Check if two messages discuss similar topics.
-        
-        Args:
-            msg1: First message to compare
-            msg2: Second message to compare
-            
-        Returns:
-            bool: True if messages contain similar topics
-        """
-        # Add keywords for different topics your characters might discuss
-        topic_keywords = {
-            "mystery": ["journal", "key", "symbols", "passage", "chamber", "secret"],
-            "investigation": ["found", "discovered", "search", "look", "examine"],
-            "speculation": ["think", "believe", "suspect", "perhaps", "maybe"],
-            # Add more topic categories as needed
-        }
-        
-        msg1_lower = msg1.lower()
-        msg2_lower = msg2.lower()
-        
-        for keywords in topic_keywords.values():
-            # If both messages contain keywords from the same topic
-            if (any(word in msg1_lower for word in keywords) and 
-                any(word in msg2_lower for word in keywords)):
-                return True
-        
-        return False
-    
-    def _get_fallback_interaction(self, last_speaker: str) -> Tuple[str, str, str]:
-        """Provide fallback interaction if normal flow fails.
-        
-        Args:
-            last_speaker: Name of the most recent speaker
-            
-        Returns:
-            Tuple[str, str, str]: Tuple of (next_speaker, target, reasoning)
-        """
-        if last_speaker.lower() == "user":
-            # Ensure a character responds to the user
-            char_name = next(iter(self.characters.keys()))
-            return (
-                char_name,
-                "User",
-                "Responding to user's message"
-            )
-        else:
-            # Encourage user participation
-            return (
-                "user",
-                next(iter(self.characters.keys())),
-                "Awaiting user's response"
-            )
-    
-    def format_characters_info(self) -> str:
-        """Format character information for prompts.
-        
-        Returns:
-            str: Formatted string containing all character information
-        """
-        return "\n".join(
-            f"{name} - {self._format_character_traits(char)}"
-            for name, char in self.characters.items()
-        )
-    
-    def _is_question_to_user(self, message: str, target: str) -> bool:
-        """Check if the message is a question or prompt directed at the user.
-        
-        Args:
-            message: The message content to check
-            target: The target of the message
-            
-        Returns:
-            bool: True if the message appears to be a question for the user
-        """
-        # Check if message is directed at user
-        if target.lower() != "user":
-            return False
-        
-        # Common question indicators
-        question_indicators = [
-            "?", "what", "how", "why", "where", "when", "who", "which",
-            "could you", "would you", "will you", "can you", "do you"
-        ]
-        
-        message_lower = message.lower()
-        return any(indicator in message_lower for indicator in question_indicators)
-    
+
     def determine_next_interaction(self, last_speaker: str, last_message: str) -> Tuple[str, str, str]:
         """Determine and log the next interaction in the conversation flow.
         
         Args:
-            last_speaker: Name of the most recent speaker
-            last_message: Content of the most recent message
+            last_speaker: Name of previous speaker
+            last_message: Content of previous message
             
         Returns:
-            Tuple[str, str, str]: Tuple of (next_speaker, target, reasoning)
+            Tuple containing:
+                - Name of next speaker
+                - Target recipient
+                - Reasoning for selection
         """
         try:
             if last_speaker == "User":
@@ -577,7 +430,6 @@ class Orchestrator:
             if next_speaker in self.characters:
                 self._process_character_response(next_speaker, last_message, target)
             
-            # Log the flow decision
             self.game_log.log_event("flow_decision", {
                 "last_speaker": last_speaker,
                 "next_speaker": next_speaker,
@@ -590,29 +442,64 @@ class Orchestrator:
         except Exception as e:
             logging.error(f"Error in orchestrator: {e}")
             return self._get_fallback_interaction(last_speaker)
-    
+
+    def _get_fallback_interaction(self, last_speaker: str) -> Tuple[str, str, str]:
+        """Provide fallback interaction if normal flow fails.
+        
+        Args:
+            last_speaker: Name of previous speaker
+            
+        Returns:
+            Tuple containing fallback speaker, target and reasoning
+        """
+        if last_speaker.lower() == "user":
+            char_name = next(iter(self.characters.keys()))
+            return (char_name, "User", "Responding to user's message")
+        else:
+            return ("user", next(iter(self.characters.keys())), "Awaiting user's response")
+
     def get_initial_character_response(self) -> str:
         """Generate initial character response after scene is set.
         
         Returns:
-            str: Initial character response
+            str: Initial character response or fallback message
         """
         try:
-            # Pick a random character to speak first
             initial_speaker = random.choice(list(self.characters.keys()))
             char = self.characters[initial_speaker]
             
-            # Generate response to scene setup
             response = char.respond_to(
-                "SCENE_START",  # Special signal
-                "ALL",  # Speaking to everyone
+                "SCENE_START",
+                "ALL",
                 {"scene": self.narrator.current_scene}
             )
             
-            # Update conversation history
             self._update_conversation_history(initial_speaker, "ALL", response)
             return response
             
         except Exception as e:
             logging.error(f"Error generating initial response: {e}")
             return f"[{list(self.characters.keys())[0]}]: *looks around curiously*"
+
+    @property
+    def thoughts_queue(self) -> Queue:
+        """Access the thoughts queue from the ThoughtManager.
+        
+        Returns:
+            Queue: Queue containing generated character thoughts
+        """
+        return self.thought_manager.thoughts_queue
+
+    def get_next_thought(self) -> Optional[Tuple[str, str]]:
+        """Get the next available thought from the queue.
+        
+        Returns:
+            Optional[Tuple[str, str]]: Tuple of (character_name, thought) or None if queue is empty
+        """
+        try:
+            if not self.thoughts_queue.empty():
+                return self.thoughts_queue.get_nowait()
+            return None
+        except Exception as e:
+            logging.error(f"Error getting next thought: {e}")
+            return None

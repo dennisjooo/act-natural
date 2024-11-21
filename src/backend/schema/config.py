@@ -48,3 +48,17 @@ class PlayConfig:
         "An abandoned mansion during a masquerade ball. The guests are trapped inside by a mysterious force, and everyone seems to have a hidden agenda. The air is thick with intrigue and suspicion.",
         "A futuristic space station at the edge of known space. The station's systems are malfunctioning, and the diverse crew members each seem to know more than they're letting on. The metallic corridors echo with whispered conspiracies."
     )
+
+@dataclass
+class FlowConfig:
+    """Configuration for conversation flow parameters."""
+    idle_time_threshold: int = 45  # seconds before characters initiate
+    initiation_chance: float = 0.2  # 20% chance to initiate
+    user_response_chance: float = 0.9  # 90% chance to wait for user after question
+    direct_response_chance: float = 0.9  # 90% chance to respond when directly addressed
+
+@dataclass
+class OrchestratorConfig:
+    """Configuration for the orchestrator."""
+    max_history_length: int = 10
+    thought_queue_multiplier: int = 2 
