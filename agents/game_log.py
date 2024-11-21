@@ -71,7 +71,11 @@ class GameLog:
             "description": config.get("description"),
             "personality": config.get("personality"),
             "hidden_motive": config.get("hidden_motive"),
-            "background": config.get("background")
+            "background": config.get("background"),
+            "gender": config.get("gender"),
+            "emoji": config.get("emoji"),
+            "role_in_scene": config.get("role_in_scene"),
+            "relation_to_user": config.get("relation_to_user")
         }
         self._save_log()
         

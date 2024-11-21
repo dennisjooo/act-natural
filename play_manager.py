@@ -1,4 +1,3 @@
-import logging
 import os
 import random
 from langchain_groq import ChatGroq
@@ -11,6 +10,7 @@ from agents.character_generator import CharacterGenerator
 from agents.scenario_generator import ScenarioGenerator
 from agents.response_processor import ResponseProcessor
 from config.play_config import PlayConfig
+from agents.game_log import GameLog
 
 class PlayManager:
     """Manages the interactive play experience including characters, narration and orchestration.
@@ -66,6 +66,9 @@ class PlayManager:
         self.response_processor: Optional[ResponseProcessor] = None
         self.character_context: str = ""
         self.user_role: str = ""
+        
+        # Add game_log initialization
+        self.game_log = GameLog()
         
         # Initialize generators
         self.character_generator = CharacterGenerator(self.llm)
@@ -182,14 +185,18 @@ class PlayManager:
 
         # Generate characters with updated user info
         self.generate_characters(scene_description, num_characters)
-        self.orchestrator = Orchestrator(self.characters, self.narrator)
+        self.orchestrator = Orchestrator(self.characters, self.narrator, self.game_log)
+        
+        # Log characters after generation
+        for name, char in self.characters.items():
+            self.game_log.add_character(name, char.config.__dict__)
         
         # Log the scene and narrator information
-        self.orchestrator.game_log.log_event("narrator_setup", {
+        self.game_log.log_event("narrator_setup", {
             "scene_description": scene_description,
             "narrator_type": type(self.narrator).__name__
         })
-        self.orchestrator.game_log.set_scene(scene_description)
+        self.game_log.set_scene(scene_description)
         
         self.response_processor = ResponseProcessor(self.characters, self.narrator)
         
@@ -201,7 +208,7 @@ class PlayManager:
         opening = self.narrator.set_scene(scene_description)
         
         # Log the narrator's opening statement
-        self.orchestrator.game_log.log_event("narration", {
+        self.game_log.log_event("narration", {
             "type": "opening",
             "content": opening
         })
@@ -372,8 +379,7 @@ class PlayManager:
             event_type (str): Type of narrator event (e.g., 'scene_description', 'observation')
             content (str): The actual narration content
         """
-        if self.orchestrator:
-            self.orchestrator.game_log.log_event("narration", {
-                "type": event_type,
-                "content": content
-            })
+        self.game_log.log_event("narration", {
+            "type": event_type,
+            "content": content
+        })

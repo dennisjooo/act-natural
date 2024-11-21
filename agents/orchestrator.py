@@ -15,7 +15,6 @@ from .prompts import (
     ORCHESTRATOR_FLOW_PROMPT,
     CHARACTER_THOUGHT_PROMPT
 )
-from .game_log import GameLog
 
 class SpeakerType(Enum):
     """Types of speakers in the conversation system."""
@@ -179,20 +178,20 @@ class Orchestrator:
     Coordinates character responses, maintains conversation history, and manages
     background thought generation for characters.
     """
-    
-    # Constants moved to class level
     MAX_HISTORY_LENGTH = 10
     THOUGHT_QUEUE_MULTIPLIER = 2
     
-    def __init__(self, characters: Dict[str, Any], narrator: Any) -> None:
+    def __init__(self, characters: Dict[str, Any], narrator: Any, game_log: Any) -> None:
         """Initialize the Orchestrator.
         
         Args:
             characters: Dictionary mapping character names to Character objects
             narrator: Narrator instance for scene management
+            game_log: GameLog instance for logging events
         """
         self.characters = characters
         self.narrator = narrator
+        self.game_log = game_log
         self.llm = self._initialize_llm()
         self.chain = ORCHESTRATOR_FLOW_PROMPT | self.llm
         self.conversation_history: List[ConversationEvent] = []
@@ -205,12 +204,6 @@ class Orchestrator:
         self.thoughts_queue: Queue = Queue()
         self._start_thoughts_thread()
         
-        self.game_log = GameLog()
-        
-        # Log initial character information
-        for name, char in characters.items():
-            self.game_log.add_character(name, char.config.__dict__)
-    
     def _initialize_llm(self) -> ChatGroq:
         """Initialize the language model.
         
