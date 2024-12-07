@@ -57,8 +57,8 @@ The system uses several key components (that occasionally cooperate):
 
 ## Technical Notes and Ideas
 
-- Using Groq's LLMs (Gemma 2 for orchestrator, Llama 3.1 8B for characters, and Llama 3.1 70B for scenario generation)
-- Highly recommend using more powerful models for the orchestrator and scenario generation
+- Using Groq's LLMs (Gemma 2 9B for the characters and Llama 3.3 70B for scenario generation and orchestrator)
+- Highly recommend using more powerful models for the orchestrator
 - Langchain is used to manage the conversation history and to keep track of the characters' internal monologues
 - Would be fun to add a vector database to keep track of the characters' memories, or even better, a graph database
 - Also fun to add dice rolls and other randomness to the character's actions (ala D&D), that being said the current
